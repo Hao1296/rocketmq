@@ -73,7 +73,9 @@ public class MappedFile extends ReferenceResource {
      */
     protected ByteBuffer writeBuffer = null;
     /**
-     * 堆外内存池
+     * 短暂存储池(堆外内存池)。
+     * 之所以引入该机制，是因为要提供一种手动来将内存锁定在内存，避免被交换到磁盘
+     * (mmap出的内存数据不会驻留内存，有被交换到磁盘的可能性)
      */
     protected TransientStorePool transientStorePool = null;
     private String fileName;
@@ -341,6 +343,8 @@ public class MappedFile extends ReferenceResource {
     /**
      * 将writeBuffer的数据写入fileChannel，即只有经过TransientStorePool的写入方式才需要commit，
      * 走mmap的不需要commit
+     *
+     * @param commitLeastPages 本次提交的最小页数；若待提交页数小于commitLeastPages，则不执行commit，等待下次
      */
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
