@@ -42,7 +42,7 @@ import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
 /**
- * 文件存储的直接内存映射业务封装类。
+ * 文件存储的内存映射文件封装类。CommitLog、ConsumeQueue和IndexFile都基于MappedFile
  * <p>
  * 有两种写入方式：
  * <pre>

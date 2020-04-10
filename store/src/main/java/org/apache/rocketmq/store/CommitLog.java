@@ -398,14 +398,14 @@ public class CommitLog {
             + 4 //MAGICCODE
             + 4 //BODYCRC
             + 4 //QUEUEID
-            + 4 //FLAG
-            + 8 //QUEUEOFFSET
-            + 8 //PHYSICALOFFSET
-            + 4 //SYSFLAG
-            + 8 //BORNTIMESTAMP
-            + bornhostLength //BORNHOST
-            + 8 //STORETIMESTAMP
-            + storehostAddressLength //STOREHOSTADDRESS
+            + 4 //FLAG (提供给客户端使用，服务端不处理flag)
+            + 8 //QUEUEOFFSET 消息在ConsumeQueue中的偏移量
+            + 8 //PHYSICALOFFSET 消息在CommitLog中的偏移量
+            + 4 //SYSFLAG 指定是否压缩、是否为事务消息
+            + 8 //BORNTIMESTAMP 生产者调用API的时间
+            + bornhostLength //BORNHOST 发送者IP和端口
+            + 8 //STORETIMESTAMP 消息存储时间
+            + storehostAddressLength //STOREHOSTADDRESS Broker的IP和端口
             + 4 //RECONSUMETIMES
             + 8 //Prepared Transaction Offset
             + 4 + (bodyLength > 0 ? bodyLength : 0) //BODY
@@ -1525,6 +1525,13 @@ public class CommitLog {
             return msgStoreItemMemory;
         }
 
+        /**
+         * @param fileFromOffset CommitLog起始偏移量
+         * @param byteBuffer     mmap内存或堆外直接内存
+         * @param maxBlank       CommitLog文件剩余最大空间
+         * @param msgInner       消息数据
+         * @return append结果
+         */
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBrokerInner msgInner) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
@@ -1594,6 +1601,7 @@ public class CommitLog {
 
             final int bodyLength = msgInner.getBody() == null ? 0 : msgInner.getBody().length;
 
+            // calMsgLength中可以看到CommitLog数据条目的大致解构
             final int msgLen = calMsgLength(msgInner.getSysFlag(), bodyLength, topicLength, propertiesLength);
 
             // Exceeds the maximum message

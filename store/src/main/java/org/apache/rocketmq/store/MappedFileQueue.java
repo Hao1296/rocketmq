@@ -30,7 +30,7 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 /**
- * 对连续物理存储的封装类，用于维护CommitLog文件列表等
+ * 对连续物理存储的封装类，可看作对CommitLog、ConsumeQueue和IndexFile存储目录的抽象
  * <p>
  * 这其中有一些优化:
  * <pre>
@@ -45,10 +45,17 @@ public class MappedFileQueue {
 
     private final String storePath;
 
+    /**
+     * 单个文件的固定大小
+     */
     private final int mappedFileSize;
-
+    /**
+     * 文件列表
+     */
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
-
+    /**
+     * 负责处理MappedFile分配请求的服务线程
+     */
     private final AllocateMappedFileService allocateMappedFileService;
 
     private long flushedWhere = 0;
@@ -82,6 +89,12 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 遍历文件列表，查找第一个最后更改时间大于给定值的MappedFile；若没有，则返回最后一个文件。
+     *
+     * @param timestamp 时间戳
+     * @return MappedFile
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -462,6 +475,8 @@ public class MappedFileQueue {
 
     /**
      * Finds a mapped file by offset.
+     *
+     * 注意，由于RocketMQ会定时删除过期的存储文件，所以现存第一个文件未必是00000000000000000000
      *
      * @param offset Offset.
      * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
