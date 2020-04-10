@@ -41,6 +41,16 @@ import org.apache.rocketmq.store.config.FlushDiskType;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * 文件存储的直接内存映射业务封装类。
+ * <p>
+ * 有两种写入方式：
+ * <pre>
+ * 1. 走mmap
+ * 2. 若开起了transientStorePool功能，则数据先写入由transientStorePool划分出来的writeBuffer，
+ *    然后通过commit方法将数据写入fileChannel
+ * </pre>
+ */
 public class MappedFile extends ReferenceResource {
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -57,10 +67,16 @@ public class MappedFile extends ReferenceResource {
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
     protected ByteBuffer writeBuffer = null;
+    /**
+     * 堆外内存池
+     */
     protected TransientStorePool transientStorePool = null;
     private String fileName;
     private long fileFromOffset;
     private File file;
+    /**
+     * 文件mmap后的内存数据
+     */
     private MappedByteBuffer mappedByteBuffer;
     private volatile long storeTimestamp = 0;
     private boolean firstCreateInQueue = false;
@@ -188,10 +204,17 @@ public class MappedFile extends ReferenceResource {
         return fileChannel;
     }
 
+    /**
+     * 顺序写入消息，主要提供给CommitLog使用。
+     * 实际写入逻辑在callback中实现
+     */
     public AppendMessageResult appendMessage(final MessageExtBrokerInner msg, final AppendMessageCallback cb) {
         return appendMessagesInner(msg, cb);
     }
-
+    /**
+     * 顺序写入消息Batch，主要提供给CommitLog使用
+     * 实际写入逻辑在callback中实现
+     */
     public AppendMessageResult appendMessages(final MessageExtBatch messageExtBatch, final AppendMessageCallback cb) {
         return appendMessagesInner(messageExtBatch, cb);
     }
@@ -224,7 +247,9 @@ public class MappedFile extends ReferenceResource {
     public long getFileFromOffset() {
         return this.fileFromOffset;
     }
-
+    /**
+     * 顺序写入字节数据，主要提供给ConsumeQueue使用
+     */
     public boolean appendMessage(final byte[] data) {
         int currentPos = this.wrotePosition.get();
 
@@ -244,6 +269,8 @@ public class MappedFile extends ReferenceResource {
 
     /**
      * Content of data from offset to offset + length will be wrote to file.
+     * <p>
+     * 写入字节数据，主要提供给ConsumeQueue使用
      *
      * @param offset The offset of the subarray to be used.
      * @param length The length of the subarray to be used.
@@ -294,6 +321,10 @@ public class MappedFile extends ReferenceResource {
         return this.getFlushedPosition();
     }
 
+    /**
+     * 将writeBuffer的数据写入fileChannel，即只有经过TransientStorePool的写入方式才需要commit，
+     * 走mmap的不需要commit
+     */
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
             //no need to commit data to file channel, so just regard wrotePosition as committedPosition.

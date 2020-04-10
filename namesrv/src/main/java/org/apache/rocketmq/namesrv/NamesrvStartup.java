@@ -41,6 +41,18 @@ import org.apache.rocketmq.srvutil.ServerUtil;
 import org.apache.rocketmq.srvutil.ShutdownHookThread;
 import org.slf4j.LoggerFactory;
 
+/**
+ * <pre>
+ * NameServer功能点:
+ * 1. 服务注册
+ *   a. 接收Broker每30s向所有NameServer发送的心跳包(Broker启动时会立即发送一次)
+ *   b. 每10s检查一次brokerLiveTable，剔除不存活Broker
+ * 2. 服务发现
+ *   a. 为客户端(生产者&消费者)提供路由查询
+ * 3. 运维操作
+ * 具体见 {@link org.apache.rocketmq.namesrv.processor.DefaultRequestProcessor}
+ * </pre>
+ */
 public class NamesrvStartup {
 
     private static InternalLogger log;

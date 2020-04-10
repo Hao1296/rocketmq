@@ -66,29 +66,53 @@ public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
     private final MessageStoreConfig messageStoreConfig;
-    // CommitLog
+    /**
+     * CommitLog
+     */
     private final CommitLog commitLog;
-
+    /**
+     * ConsumeQueue
+     */
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
-
+    /**
+     * ConsumeQueue刷盘线程
+     */
     private final FlushConsumeQueueService flushConsumeQueueService;
-
+    /**
+     * CommitLog文件清除服务
+     */
     private final CleanCommitLogService cleanCommitLogService;
-
+    /**
+     * ConsumeQueue文件清除服务
+     */
     private final CleanConsumeQueueService cleanConsumeQueueService;
-
+    /**
+     * IndexFile
+     */
     private final IndexService indexService;
-
+    /**
+     * 负责分配MappedFile
+     */
     private final AllocateMappedFileService allocateMappedFileService;
-
+    /**
+     * CommitLog消息分发，根据CommitLog文件构建ConsumeQueue、IndexFile文件
+     */
     private final ReputMessageService reputMessageService;
-
+    /**
+     * 高可用机制
+     */
     private final HAService haService;
-
+    /**
+     * 延迟消息服务
+     */
     private final ScheduleMessageService scheduleMessageService;
-
+    /**
+     * 消息存储状态统计
+     */
     private final StoreStatsService storeStatsService;
-
+    /**
+     * 消息内存缓存
+     */
     private final TransientStorePool transientStorePool;
 
     private final RunningFlags runningFlags = new RunningFlags();
@@ -97,11 +121,17 @@ public class DefaultMessageStore implements MessageStore {
     private final ScheduledExecutorService scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("StoreScheduledThread"));
     private final BrokerStatsManager brokerStatsManager;
+    /**
+     * 长轮询下消息监听器
+     */
     private final MessageArrivingListener messageArrivingListener;
     private final BrokerConfig brokerConfig;
 
     private volatile boolean shutdown = true;
 
+    /**
+     * 文件刷盘CheckPoint
+     */
     private StoreCheckpoint storeCheckpoint;
 
     private AtomicLong printTimes = new AtomicLong(0);

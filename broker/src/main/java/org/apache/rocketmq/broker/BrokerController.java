@@ -107,6 +107,23 @@ import org.apache.rocketmq.store.dledger.DLedgerCommitLog;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * Broker可视为多模块的集成中心，涉及的模块有：
+ * <pre>
+ * 1. messageStore: 处理消息存储相关业务
+ * 2. remotingServer: 处理客户端请求(生产者&消费者)
+ * 3. fastRemotingServer: 等效于不处理消费者pull请求的remotingServer，用于处理开启了VIP通道的请求
+ * 4. fileWatchService: 监控指定文件的变化，Broker中用于监控TLS证书等文件
+ * 5. brokerOuterAPI: 用于向NameServer注册Broker
+ * 6. pullRequestHoldService: 维护PullRequest(包括长轮询和短轮询)，并为其定时轮询消息，以判断是否有数据可提供给消费者
+ * 7. clientHousekeepingService: 维护生产者/消费者/FilterServer列表，并定时扫描(10s)，删除不存活对象
+ * 8. filterServerManager: 处理FilterServer
+ * 9. transactionalMessageCheckService: 负责定期回查事务状态
+ * 10. brokerStatsManager
+ * 11. brokerFastFailure: 负责清除过期request
+ * </pre>
+ * 除此之外，Broker单独维护了一个定时任务：向NameServer注册
+ */
 public class BrokerController {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final InternalLogger LOG_PROTECTION = InternalLoggerFactory.getLogger(LoggerName.PROTECTION_LOGGER_NAME);

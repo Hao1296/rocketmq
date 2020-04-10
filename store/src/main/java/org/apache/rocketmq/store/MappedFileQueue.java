@@ -29,6 +29,14 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 对连续物理存储的封装类，用于维护CommitLog文件列表等
+ * <p>
+ * 这其中有一些优化:
+ * <pre>
+ * 1. 预分配MappedFile: 当跟据offset创建下一个MappedFile时也会预创建下下个MappedFile(异步)，下次再申请时即可直接返回
+ * </pre>
+ */
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);

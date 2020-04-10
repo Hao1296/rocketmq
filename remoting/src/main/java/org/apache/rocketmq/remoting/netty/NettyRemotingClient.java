@@ -68,6 +68,11 @@ import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 借助NettyRemotingAbstract基础设施实现了RemotingClient相关方法（如invokeSync、invokeAsync、invokeOneway等等）
+ *
+ * @see org.apache.rocketmq.remoting.RemotingClient
+ */
 public class NettyRemotingClient extends NettyRemotingAbstract implements RemotingClient {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
 
@@ -179,6 +184,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                             log.warn("Connections are insecure as SSLContext is null!");
                         }
                     }
+                    //此处实现和NettyRemotingServer基本一致
                     pipeline.addLast(
                         defaultEventExecutorGroup,
                         new NettyEncoder(),

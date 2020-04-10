@@ -208,6 +208,14 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     public void initChannel(SocketChannel ch) throws Exception {
+                        //这里涉及的ChannelHandler属性均为NettyRemotingServer私有，外部不可直接更改；
+                        //1. serverHandler最终会调用到defaultRequestProcessor/processorTable,
+                        //   要通过更改defaultRequestProcessor/processorTable来实现业务逻辑；
+                        //2. handshakeHandler负责ssl相关处理；
+                        //3. encoder负责输出数据序列化；
+                        //4. NettyDecoder负责输入数据反序列化；
+                        //5. IdleStateHandler由Netty官方提供，当channel在读/写上Idle的时间大于设定时会抛出对应事件；
+                        //6. connectionManageHandler处理Channel相关事件(如接收5中抛出的ALL_IDLE事件，close掉Channel)
                         ch.pipeline()
                             .addLast(defaultEventExecutorGroup, HANDSHAKE_HANDLER_NAME, handshakeHandler)
                             .addLast(defaultEventExecutorGroup,
@@ -289,6 +297,8 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
     @Override
     public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
+        //processorTable为父类NettyRemotingAbstract定义的属性，
+        //在NettyRemotingServer.registerDefaultProcessor中被使用
         ExecutorService executorThis = executor;
         if (null == executor) {
             executorThis = this.publicExecutor;
@@ -300,6 +310,8 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
     @Override
     public void registerDefaultProcessor(NettyRequestProcessor processor, ExecutorService executor) {
+        //defaultRequestProcessor为父类NettyRemotingAbstract定义的属性，
+        //在NettyRemotingServer.registerDefaultProcessor中被使用
         this.defaultRequestProcessor = new Pair<NettyRequestProcessor, ExecutorService>(processor, executor);
     }
 
@@ -412,6 +424,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * 应用业务逻辑扩展点
+     */
     @ChannelHandler.Sharable
     class NettyServerHandler extends SimpleChannelInboundHandler<RemotingCommand> {
 
