@@ -152,6 +152,9 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 二分法检索
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
