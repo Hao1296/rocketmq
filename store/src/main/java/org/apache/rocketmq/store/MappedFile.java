@@ -55,8 +55,13 @@ public class MappedFile extends ReferenceResource {
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    /**
+     * 当前所有已map的文件占用的虚拟内存总量
+     */
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
-
+    /**
+     * 当前所有已map的文件的总数
+     */
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
@@ -72,13 +77,25 @@ public class MappedFile extends ReferenceResource {
      */
     protected TransientStorePool transientStorePool = null;
     private String fileName;
+    /**
+     * 文件初始偏移量
+     */
     private long fileFromOffset;
+    /**
+     * 文件对象
+     */
     private File file;
     /**
      * 文件mmap后的内存数据
      */
     private MappedByteBuffer mappedByteBuffer;
+    /**
+     * 文件最后写入的时间
+     */
     private volatile long storeTimestamp = 0;
+    /**
+     * 是否为队列中第一个文件
+     */
     private boolean firstCreateInQueue = false;
 
     public MappedFile() {
