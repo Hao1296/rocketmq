@@ -1540,6 +1540,8 @@ public class CommitLog {
             ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
 
             this.resetByteBuffer(storeHostHolder, storeHostLength);
+            // 消息id构成: UtilAll.bytes2string（4或16字节brokerIP + 4字节端口 + 8字节消息偏移量）
+            // UtilAll.bytes2string会将字节数据转换成16进制字符串表示
             String msgId;
             if ((sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0) {
                 msgId = MessageDecoder.createMessageId(this.msgIdMemory, msgInner.getStoreHostBytes(storeHostHolder), wroteOffset);
