@@ -27,6 +27,17 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.MappedFile;
 
+/**
+ * 采用拉链法构建哈希表，用以加速通过MessageKey查询消息的过程。
+ * <p></p>
+ * 文件结构如下:
+ * <pre>
+ * --------------------------------------------------------------------------------------------
+ * |  Header  |        SlotTable        |                IndexLinedList                       |
+ * |  40B     |        4*500W B         |                20*2000W B                           |
+ * --------------------------------------------------------------------------------------------
+ * </pre>
+ */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static int hashSlotSize = 4;
