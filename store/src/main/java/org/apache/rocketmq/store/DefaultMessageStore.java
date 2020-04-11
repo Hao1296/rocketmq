@@ -95,7 +95,7 @@ public class DefaultMessageStore implements MessageStore {
      */
     private final AllocateMappedFileService allocateMappedFileService;
     /**
-     * CommitLog消息分发，根据CommitLog文件构建ConsumeQueue、IndexFile文件
+     * 服务线程，负责将消息分发至ConsumeQueue、IndexFile文件
      */
     private final ReputMessageService reputMessageService;
     /**
