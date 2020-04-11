@@ -100,6 +100,14 @@ public class IndexFile {
         return this.mappedFile.destroy(intervalForcibly);
     }
 
+    /**
+     * 插入记录
+     *
+     * @param key            key
+     * @param phyOffset      CommitLog中的offset
+     * @param storeTimestamp 消息时间戳
+     * @return 是否成功(当前只有IndexFile满了后才会返回false)
+     */
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
         if (this.indexHeader.getIndexCount() < this.indexNum) {
             int keyHash = indexKeyHashMethod(key);
@@ -197,6 +205,16 @@ public class IndexFile {
         return result;
     }
 
+    /**
+     * 根据key来查找消息offset
+     *
+     * @param phyOffsets 该列表用于返回查找结果
+     * @param key        key
+     * @param maxNum     本次查找最大数量
+     * @param begin      开始时间戳
+     * @param end        结束时间戳
+     * @param lock       是否锁定(当前无作用)
+     */
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
         final long begin, final long end, boolean lock) {
         if (this.mappedFile.hold()) {

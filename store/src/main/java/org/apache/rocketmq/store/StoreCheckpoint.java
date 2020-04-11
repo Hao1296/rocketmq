@@ -27,6 +27,16 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * checkpoint文件大小有4k(一个·page)，但只用了前24bytes
+ * <pre>
+ * ----------------------------------------------------------------------------
+ * |   CommitLog刷盘时间   |   ConsumeQueue刷盘时间    |    IndexFile刷盘时间   |
+ * |   physicMsgTimestamp |   logicsMsgTimestamp      |    indexMsgTimestamp  |
+ * |   8bytes             |   8bytes                  |    8bytes             |
+ * ----------------------------------------------------------------------------
+ * </pre>
+ */
 public class StoreCheckpoint {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private final RandomAccessFile randomAccessFile;
