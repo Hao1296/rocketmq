@@ -198,6 +198,16 @@ public class IndexService {
         return topic + "#" + key;
     }
 
+    /**
+     * 处理CommitLog数据分发请求，将对应消息的信息写入IndexFile。
+     * 会写入IndexFile的key有:
+     * <pre>
+     * 1. 消息唯一键(uniqKey)
+     * 2. 消息的普通key(keys)
+     * </pre>
+     *
+     * @param req DispatchRequest
+     */
     public void buildIndex(DispatchRequest req) {
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {

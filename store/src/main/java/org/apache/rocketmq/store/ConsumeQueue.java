@@ -379,6 +379,11 @@ public class ConsumeQueue {
         return this.minLogicOffset / CQ_STORE_UNIT_SIZE;
     }
 
+    /**
+     * 处理CommitLog消息分发请求，将request中的消息对应的信息写入该ConsumeQueue
+     *
+     * @param request DispatchRequest
+     */
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
@@ -425,6 +430,14 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * 写入一条位置信息(ConsumeQueue的一个条目)。ConsumeQueue固定为异步刷盘，故该方法不会flush
+     *
+     * @param offset   CommitLog offset
+     * @param size     消息长度
+     * @param tagsCode 消息过滤tag hash code
+     * @param cqOffset ConsumeQueue offset
+     */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
         final long cqOffset) {
 

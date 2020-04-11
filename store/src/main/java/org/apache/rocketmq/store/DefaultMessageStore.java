@@ -182,6 +182,7 @@ public class DefaultMessageStore implements MessageStore {
 
         this.indexService.start();
 
+        //除了这里添加的两项之外，BrokerController还添加了一个CommitLogDispatcherCalcBitMap
         this.dispatcherList = new LinkedList<>();
         // ConsumeQueue分发
         this.dispatcherList.addLast(new CommitLogDispatcherBuildConsumeQueue());
@@ -1595,6 +1596,7 @@ public class DefaultMessageStore implements MessageStore {
 
         @Override
         public void dispatch(DispatchRequest request) {
+            // 只有messageIndexEnable开启时才会构建IndexFile
             if (DefaultMessageStore.this.messageStoreConfig.isMessageIndexEnable()) {
                 DefaultMessageStore.this.indexService.buildIndex(request);
             }
@@ -1908,32 +1910,38 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private void doReput() {
+            // 1. 校验reputFromOffset
             if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
                 log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
                     this.reputFromOffset, DefaultMessageStore.this.commitLog.getMinOffset());
                 this.reputFromOffset = DefaultMessageStore.this.commitLog.getMinOffset();
             }
+            // 2. 分发循环
             for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
-
+                // 2.1 检查confirmOffset
+                // TODO 确认confirmOffset的具体含义
                 if (DefaultMessageStore.this.getMessageStoreConfig().isDuplicationEnable()
                     && this.reputFromOffset >= DefaultMessageStore.this.getConfirmOffset()) {
                     break;
                 }
-
+                // 2.2 拉取CommitLog中自reputFromOffset开始的全部有效数据
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
+                // 2.3 循环处理拉取到的消息
                 if (result != null) {
                     try {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+                            // 2.3.1 构建DispatchRequest对象(从result.byteBuffer中取第一条消息，并将其position移动至下一条)
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
-
+                            // 2.3.2 处理DispatchRequest
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    // doDispatch，即调用dispatcherList列表中每一个CommitLogDispatcher的dispatch方法
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
-
+                                    // 通知消息已到达
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                         && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
@@ -1941,7 +1949,7 @@ public class DefaultMessageStore implements MessageStore {
                                             dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),
                                             dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
                                     }
-
+                                    //
                                     this.reputFromOffset += size;
                                     readSize += size;
                                     if (DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {
