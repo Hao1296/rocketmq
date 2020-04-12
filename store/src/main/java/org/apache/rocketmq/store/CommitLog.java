@@ -785,6 +785,10 @@ public class CommitLog {
 
     }
 
+    /**
+     * 根据请求的RequestHeader判断生产者传来的是否为批消息。
+     * 每次put后都会调用handleDiskFlush，根据Broker配置选择同步或异步刷盘。
+     */
     public PutMessageResult putMessage(final MessageExtBrokerInner msg) {
         // Set the storage time
         msg.setStoreTimestamp(System.currentTimeMillis());
@@ -956,7 +960,13 @@ public class CommitLog {
         return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
     }
 
-
+    /**
+     * 处理CommitLog刷盘机制，根据Broker配置选择同步或异步
+     *
+     * @param result
+     * @param putMessageResult
+     * @param messageExt
+     */
     public void handleDiskFlush(AppendMessageResult result, PutMessageResult putMessageResult, MessageExt messageExt) {
         // Synchronization flush
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
@@ -1022,6 +1032,10 @@ public class CommitLog {
 
     }
 
+    /**
+     * 根据请求的RequestHeader判断生产者传来的是否为批消息。
+     * 每次put后都会调用handleDiskFlush，根据Broker配置选择同步或异步刷盘。
+     */
     public PutMessageResult putMessages(final MessageExtBatch messageExtBatch) {
         messageExtBatch.setStoreTimestamp(System.currentTimeMillis());
         AppendMessageResult result;
@@ -1240,6 +1254,10 @@ public class CommitLog {
         protected static final int RETRY_TIMES_OVER = 10;
     }
 
+    /**
+     * 服务线程，负责开启transientStorePool时，定时将堆外直接内存的数据写入fileChannel。
+     * fileChannel的flush工作则交给了{@link org.apache.rocketmq.store.CommitLog.FlushRealTimeService}
+     */
     class CommitRealTimeService extends FlushCommitLogService {
 
         private long lastCommitTimestamp = 0;
@@ -1257,6 +1275,8 @@ public class CommitLog {
 
                 int commitDataLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogLeastPages();
 
+                // 两次commit提交最大时间间隔，默认200ms
+                // 若实际时间间隔大于该值，则commit时忽略commitDataLeastPages，即无论数据多少都commit
                 int commitDataThoroughInterval =
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogThoroughInterval();
 
@@ -1267,6 +1287,7 @@ public class CommitLog {
                 }
 
                 try {
+                    // commit方法仅负责将数据写入fileChannel，不负责flush
                     boolean result = CommitLog.this.mappedFileQueue.commit(commitDataLeastPages);
                     long end = System.currentTimeMillis();
                     if (!result) {
@@ -1293,6 +1314,10 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 服务线程，负责开启transientStorePool时，定时将fileChannel数据flush到磁盘。
+     * fileChannel的写入工作则交给了{@link org.apache.rocketmq.store.CommitLog.CommitRealTimeService}
+     */
     class FlushRealTimeService extends FlushCommitLogService {
         private long lastFlushTimestamp = 0;
         private long printTimes = 0;
@@ -1306,6 +1331,8 @@ public class CommitLog {
                 int interval = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushIntervalCommitLog();
                 int flushPhysicQueueLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogLeastPages();
 
+                // 两次flush提交最大时间间隔，默认200ms
+                // 若实际时间间隔大于该值，则flush时忽略flushPhysicQueueLeastPages，即无论数据多少都flush
                 int flushPhysicQueueThoroughInterval =
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogThoroughInterval();
 
@@ -1375,7 +1402,13 @@ public class CommitLog {
     }
 
     public static class GroupCommitRequest {
+        /**
+         * 本次刷盘请求对应消息的下一条消息的offset(或本次应刷盘数据的边界)，本次刷盘对应的是这个offset之前的数据
+         */
         private final long nextOffset;
+        /**
+         * 刷盘结果
+         */
         private CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
         private final long startTimestamp = System.currentTimeMillis();
         private long timeoutMillis = Long.MAX_VALUE;
@@ -1409,9 +1442,18 @@ public class CommitLog {
 
     /**
      * GroupCommit Service
+     *
+     * 刷盘任务处理线程
      */
     class GroupCommitService extends FlushCommitLogService {
+        // 这里之所以有两个请求容器，是为了实现"提交任务"和"执行任务"之间的资源隔离，减少并发竞争
+        /**
+         * 刷盘请求暂存容器
+         */
         private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>();
+        /**
+         * 刷盘任务"请求源"
+         */
         private volatile List<GroupCommitRequest> requestsRead = new ArrayList<GroupCommitRequest>();
 
         public synchronized void putRequest(final GroupCommitRequest request) {
@@ -1443,7 +1485,7 @@ public class CommitLog {
                                 CommitLog.this.mappedFileQueue.flush(0);
                             }
                         }
-
+                        // 注意，这里的Customer不是"架构上的消费者"，request.future的消费者或等待者
                         req.wakeupCustomer(flushOK);
                     }
 
@@ -1466,6 +1508,7 @@ public class CommitLog {
 
             while (!this.isStopped()) {
                 try {
+                    // wait结束后悔调用onWaitEnd，进而调用了swapRequests
                     this.waitForRunning(10);
                     this.doCommit();
                 } catch (Exception e) {
