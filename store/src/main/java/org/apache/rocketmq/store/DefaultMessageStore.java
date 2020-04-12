@@ -211,6 +211,7 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+            // 判断上一次退出是否正常的方式的看启动时创建${ROCKET_HOME}/store/abort的文件是否被删除
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 

@@ -180,6 +180,7 @@ public class CommitLog {
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
+            // 该循环目的仅仅是更新processOffset和mappedFileOffset的值，不分发消息，不操作文件
             while (true) {
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover);
                 int size = dispatchRequest.getMsgSize();
@@ -214,6 +215,7 @@ public class CommitLog {
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
+            // 清除掉processOffset后面的数据
             this.mappedFileQueue.truncateDirtyFiles(processOffset);
 
             // Clear ConsumeQueue redundant data
@@ -423,6 +425,9 @@ public class CommitLog {
         this.confirmOffset = phyOffset;
     }
 
+    /**
+     * 和recoverNormally流程框架大体相同，细节上有些区别
+     */
     @Deprecated
     public void recoverAbnormally(long maxPhyOffsetOfConsumeQueue) {
         // recover by the minimum time stamp
@@ -456,7 +461,8 @@ public class CommitLog {
                     // Normal data
                     if (size > 0) {
                         mappedFileOffset += size;
-
+                        // 最后一个有效文件内的所有消息都会被dispatch，确保不丢消息
+                        // 虽然会造成重复消息，但在AtLeastOnce语义下也没什么大问题
                         if (this.defaultMessageStore.getMessageStoreConfig().isDuplicationEnable()) {
                             if (dispatchRequest.getCommitLogOffset() < this.defaultMessageStore.getConfirmOffset()) {
                                 this.defaultMessageStore.doDispatch(dispatchRequest);

@@ -224,6 +224,11 @@ public class ConsumeQueue {
         return 0;
     }
 
+    /**
+     * 清理CommitLog offset大于phyOffet的消息信息，用于Broker启动时清理脏数据
+     *
+     * @param phyOffet phyOffet
+     */
     public void truncateDirtyLogicFiles(long phyOffet) {
 
         int logicFileSize = this.mappedFileSize;
