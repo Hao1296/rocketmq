@@ -87,6 +87,11 @@ public class HAConnection {
         return socketChannel;
     }
 
+    /**
+     * Slave offset消息处理服务。
+     * 收到Slave offset消息后，更新slaveRequestOffset和slaveAckOffset，
+     * 并尝试更新HAService.push2SlaveMaxOffset，且唤醒等待中的GroupTransferService线程以判断是否可以向生产者发响应
+     */
     class ReadSocketService extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024;
         private final Selector selector;
@@ -178,7 +183,7 @@ public class HAConnection {
                                 HAConnection.this.slaveRequestOffset = readOffset;
                                 log.info("slave[" + HAConnection.this.clientAddr + "] request offset " + readOffset);
                             }
-
+                            // 更新HAService.push2SlaveMaxOffset，并唤醒等待中的HAService.GroupTransferService线程
                             HAConnection.this.haService.notifyTransferSome(HAConnection.this.slaveAckOffset);
                         }
                     } else if (readSize == 0) {
@@ -199,14 +204,30 @@ public class HAConnection {
         }
     }
 
+    /**
+     * 一旦接收来自Slave的第一个offset上报请求就开启循环，不断查询offset不小于nextTransferFromWhere的数据，
+     * 并将其发送给Slave。其中nextTransferFromWhere在每次向Slave发送完新数据后会被更新(向前推进)
+     */
     class WriteSocketService extends ServiceThread {
         private final Selector selector;
         private final SocketChannel socketChannel;
 
         private final int headerSize = 8 + 4;
+        /**
+         * 将要发送给Slave的数据头对应的Buffer
+         */
         private final ByteBuffer byteBufferHeader = ByteBuffer.allocate(headerSize);
+        /**
+         * 下次传输的偏移量，会根据slaveRequestOffset进行更新
+         */
         private long nextTransferFromWhere = -1;
+        /**
+         * 将要发送给Slave的数据体对应的Buffer
+         */
         private SelectMappedBufferResult selectMappedBufferResult;
+        /**
+         * 上次数据传输是否完毕
+         */
         private boolean lastWriteOver = true;
         private long lastWriteTimestamp = System.currentTimeMillis();
 
@@ -230,8 +251,10 @@ public class HAConnection {
                         Thread.sleep(10);
                         continue;
                     }
-
+                    // 初次进行数据传输
                     if (-1 == this.nextTransferFromWhere) {
+                        // 若slaveRequestOffset为0，则从最后一个CommitLog的开头offset开始传输
+                        // 否则按slaveRequestOffset所指定的offset进行传输
                         if (0 == HAConnection.this.slaveRequestOffset) {
                             long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();
                             masterOffset =
@@ -252,6 +275,7 @@ public class HAConnection {
                             + "], and slave request " + HAConnection.this.slaveRequestOffset);
                     }
 
+                    // 判断上次数据传输是否完成
                     if (this.lastWriteOver) {
 
                         long interval =

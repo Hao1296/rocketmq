@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
@@ -55,6 +56,10 @@ public class HAService {
     private final DefaultMessageStore defaultMessageStore;
 
     private final WaitNotifyObject waitNotifyObject = new WaitNotifyObject();
+
+    /**
+     * 多个Slave中复制进度靠前的那个offset
+     */
     private final AtomicLong push2SlaveMaxOffset = new AtomicLong(0);
 
     /**
@@ -70,7 +75,7 @@ public class HAService {
     public HAService(final DefaultMessageStore defaultMessageStore) throws IOException {
         this.defaultMessageStore = defaultMessageStore;
         this.acceptSocketService =
-            new AcceptSocketService(defaultMessageStore.getMessageStoreConfig().getHaListenPort());
+                new AcceptSocketService(defaultMessageStore.getMessageStoreConfig().getHaListenPort());
         this.groupTransferService = new GroupTransferService();
         this.haClient = new HAClient();
     }
@@ -88,15 +93,16 @@ public class HAService {
     public boolean isSlaveOK(final long masterPutWhere) {
         boolean result = this.connectionCount.get() > 0;
         result =
-            result
-                && ((masterPutWhere - this.push2SlaveMaxOffset.get()) < this.defaultMessageStore
-                .getMessageStoreConfig().getHaSlaveFallbehindMax());
+                result
+                        && ((masterPutWhere - this.push2SlaveMaxOffset.get()) < this.defaultMessageStore
+                        .getMessageStoreConfig().getHaSlaveFallbehindMax());
         return result;
     }
 
-    /** 更新已主从同步的offset，Master收到Slave拉取请求后会调用该方法
+    /**
+     * 判断是否需要更新push2SlaveMaxOffset；如果是，则更新push2SlaveMaxOffset，并唤醒等待中的GroupTransferService线程
      *
-     * @param offset
+     * @param offset Slave上报来的"下一个"offset
      */
     public void notifyTransferSome(final long offset) {
         for (long value = this.push2SlaveMaxOffset.get(); offset > value; ) {
@@ -233,7 +239,7 @@ public class HAService {
 
                                 if (sc != null) {
                                     HAService.log.info("HAService receive new connection, "
-                                        + sc.socket().getRemoteSocketAddress());
+                                            + sc.socket().getRemoteSocketAddress());
 
                                     try {
                                         HAConnection conn = new HAConnection(HAService.this, sc);
@@ -270,7 +276,7 @@ public class HAService {
 
     /**
      * GroupTransferService Service
-     *
+     * <p>
      * 同步(Sync)主从复制，负责当主从同步复制结束后通知由于等待HA同步结果而阻塞的消息发送者线程
      */
     class GroupTransferService extends ServiceThread {
@@ -288,6 +294,10 @@ public class HAService {
             }
         }
 
+        /**
+         * 唤醒可能处于等待中的GroupTransferService线程，
+         * 然后根据push2SlaveMaxOffset判断是要给生产者发送响应 or 继续新一轮等待
+         */
         public void notifyTransferSome() {
             this.notifyTransferObject.wakeup();
         }
@@ -304,7 +314,7 @@ public class HAService {
                     for (CommitLog.GroupCommitRequest req : this.requestsRead) {
                         boolean transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
                         long waitUntilWhen = HAService.this.defaultMessageStore.getSystemClock().now()
-                            + HAService.this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout();
+                                + HAService.this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout();
                         while (!transferOK && HAService.this.defaultMessageStore.getSystemClock().now() < waitUntilWhen) {
                             this.notifyTransferObject.waitForRunning(1000);
                             transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
@@ -385,9 +395,9 @@ public class HAService {
 
         private boolean isTimeToReportOffset() {
             long interval =
-                HAService.this.defaultMessageStore.getSystemClock().now() - this.lastWriteTimestamp;
+                    HAService.this.defaultMessageStore.getSystemClock().now() - this.lastWriteTimestamp;
             boolean needHeart = interval > HAService.this.defaultMessageStore.getMessageStoreConfig()
-                .getHaSendHeartbeatInterval();
+                    .getHaSendHeartbeatInterval();
 
             return needHeart;
         }
@@ -405,7 +415,7 @@ public class HAService {
                     this.socketChannel.write(this.reportOffset);
                 } catch (IOException e) {
                     log.error(this.getServiceName()
-                        + "reportSlaveMaxOffset this.socketChannel.write exception", e);
+                            + "reportSlaveMaxOffset this.socketChannel.write exception", e);
                     return false;
                 }
             }
@@ -481,7 +491,7 @@ public class HAService {
                     if (slavePhyOffset != 0) {
                         if (slavePhyOffset != masterPhyOffset) {
                             log.error("master pushed offset not equal the max phy offset in slave, SLAVE: "
-                                + slavePhyOffset + " MASTER: " + masterPhyOffset);
+                                    + slavePhyOffset + " MASTER: " + masterPhyOffset);
                             return false;
                         }
                     }
@@ -580,6 +590,10 @@ public class HAService {
             }
         }
 
+        /**
+         * 不断循环接收处理Master推来的数据，
+         * 并在每次迭代中判断是否需要额外向Master上报offset
+         */
         @Override
         public void run() {
             log.info(this.getServiceName() + " service started");
@@ -613,12 +627,12 @@ public class HAService {
                         }
                         // 5. 连接有效性判断
                         long interval =
-                            HAService.this.getDefaultMessageStore().getSystemClock().now()
-                                - this.lastWriteTimestamp;
+                                HAService.this.getDefaultMessageStore().getSystemClock().now()
+                                        - this.lastWriteTimestamp;
                         if (interval > HAService.this.getDefaultMessageStore().getMessageStoreConfig()
-                            .getHaHousekeepingInterval()) {
+                                .getHaHousekeepingInterval()) {
                             log.warn("HAClient, housekeeping, found this connection[" + this.masterAddress
-                                + "] expired, " + interval);
+                                    + "] expired, " + interval);
                             // 这里close掉的连接会在下一次迭代中尝试打开
                             this.closeMaster();
                             log.warn("HAClient, master not response some time, so close connection");
