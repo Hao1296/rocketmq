@@ -1401,13 +1401,16 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 刷盘或主从复制请求
+     */
     public static class GroupCommitRequest {
         /**
          * 本次刷盘请求对应消息的下一条消息的offset(或本次应刷盘数据的边界)，本次刷盘对应的是这个offset之前的数据
          */
         private final long nextOffset;
         /**
-         * 刷盘结果
+         * 刷盘或复制结果
          */
         private CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
         private final long startTimestamp = System.currentTimeMillis();

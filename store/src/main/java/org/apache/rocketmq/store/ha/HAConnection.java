@@ -34,9 +34,18 @@ public class HAConnection {
     private final SocketChannel socketChannel;
     private final String clientAddr;
     private WriteSocketService writeSocketService;
+    /**
+     *
+     */
     private ReadSocketService readSocketService;
 
+    /**
+     * Slave发起的拉数据请求对应的offset
+     */
     private volatile long slaveRequestOffset = -1;
+    /**
+     * Slave ACK的offset
+     */
     private volatile long slaveAckOffset = -1;
 
     public HAConnection(final HAService haService, final SocketChannel socketChannel) throws IOException {
@@ -216,6 +225,7 @@ public class HAConnection {
                 try {
                     this.selector.select(1000);
 
+                    // 如果Slave从未用该连接发来请求，则不作任何处理
                     if (-1 == HAConnection.this.slaveRequestOffset) {
                         Thread.sleep(10);
                         continue;

@@ -47,6 +47,9 @@ public class HAService {
 
     private final List<HAConnection> connectionList = new LinkedList<>();
 
+    /**
+     * 处理Master和Slave之间的业务：开端口，接收Slave拉数据的请求
+     */
     private final AcceptSocketService acceptSocketService;
 
     private final DefaultMessageStore defaultMessageStore;
@@ -54,8 +57,14 @@ public class HAService {
     private final WaitNotifyObject waitNotifyObject = new WaitNotifyObject();
     private final AtomicLong push2SlaveMaxOffset = new AtomicLong(0);
 
+    /**
+     * 处理Master和生产者之间的业务：在数据同步到Slave之前，阻塞PushRequest处理线程
+     */
     private final GroupTransferService groupTransferService;
 
+    /**
+     * Slave端组件。服务线程，每5s向Master发起1-2次拉数据请求
+     */
     private final HAClient haClient;
 
     public HAService(final DefaultMessageStore defaultMessageStore) throws IOException {
@@ -85,6 +94,10 @@ public class HAService {
         return result;
     }
 
+    /** 更新已主从同步的offset，Master收到Slave拉取请求后会调用该方法
+     *
+     * @param offset
+     */
     public void notifyTransferSome(final long offset) {
         for (long value = this.push2SlaveMaxOffset.get(); offset > value; ) {
             boolean ok = this.push2SlaveMaxOffset.compareAndSet(value, offset);
@@ -105,10 +118,18 @@ public class HAService {
     // this.groupTransferService.notifyTransferSome();
     // }
 
+    // TODO 为啥为Master保留个空线程(4)？
+    // TODO Slave为啥要保留1/2/3
     public void start() throws Exception {
+        // 主从服务器之间的通信不基于Netty，直接在Java NIO基础上构建
+        // 1. 开启端口，等待Slave的连接请求(SYN)
         this.acceptSocketService.beginAccept();
+        // 2. 开启线程，不断循环，select出OP_ACCEPT事件，建立连接，并创建HAConnection对象，
+        //    且调用HAConnection.start()以处理请求
         this.acceptSocketService.start();
+        // 3. 开启线程，根据Slave拉取进度唤醒阻塞的生产者PushRequest处理线程
         this.groupTransferService.start();
+        // 4. 开启Slave端负责定时拉消息的组件 (未配置Master地址时，该组件为一个空转线程)
         this.haClient.start();
     }
 
@@ -249,6 +270,8 @@ public class HAService {
 
     /**
      * GroupTransferService Service
+     *
+     * 同步(Sync)主从复制，负责当主从同步复制结束后通知由于等待HA同步结果而阻塞的消息发送者线程
      */
     class GroupTransferService extends ServiceThread {
 
@@ -328,13 +351,23 @@ public class HAService {
     class HAClient extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
         private final AtomicReference<String> masterAddress = new AtomicReference<>();
+        /**
+         * Slave向Master发起拉数据请求时的偏移量
+         */
         private final ByteBuffer reportOffset = ByteBuffer.allocate(8);
+        /**
+         * 和Master之间连接对应的channel对象
+         */
         private SocketChannel socketChannel;
         private Selector selector;
         private long lastWriteTimestamp = System.currentTimeMillis();
 
+        /**
+         * CommitLog文件最大偏移量，反映了主从复制的进度
+         */
         private long currentReportedOffset = 0;
         private int dispatchPosition = 0;
+        // 两个读缓冲区，来回交换
         private ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
         private ByteBuffer byteBufferBackup = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
 
@@ -366,6 +399,7 @@ public class HAService {
             this.reportOffset.position(0);
             this.reportOffset.limit(8);
 
+            // 由于是NIO通信方式，一次write未必将8个字节的reportOffset数据全部写入，故尝试3次
             for (int i = 0; i < 3 && this.reportOffset.hasRemaining(); i++) {
                 try {
                     this.socketChannel.write(this.reportOffset);
@@ -498,6 +532,8 @@ public class HAService {
         private boolean connectMaster() throws ClosedChannelException {
             if (null == socketChannel) {
                 String addr = this.masterAddress.get();
+
+                // 注意，当Slave没有配置masterAddress时不会抛异常
                 if (addr != null) {
 
                     SocketAddress socketAddress = RemotingUtil.string2SocketAddress(addr);
@@ -550,26 +586,32 @@ public class HAService {
 
             while (!this.isStopped()) {
                 try {
+                    // 注意，当masterAddress为null时(Slave没有配置master地址)，不会抛异常，只是会让HAClient变成空线程
                     if (this.connectMaster()) {
 
+                        // 1. 判断是否需要向Master上报当前待拉取偏移量(这个上报有三个作用: 拉数据请求、ACK、心跳)
+                        // 默认5s一次
                         if (this.isTimeToReportOffset()) {
                             boolean result = this.reportSlaveMaxOffset(this.currentReportedOffset);
                             if (!result) {
+                                // 这里close掉的连接会在下一次迭代中尝试打开
                                 this.closeMaster();
                             }
                         }
-
+                        // 2. select事件，selector上register了OP_READ
                         this.selector.select(1000);
-
+                        // 3. 处理Master返回的数据
                         boolean ok = this.processReadEvent();
                         if (!ok) {
+                            // 这里close掉的连接会在下一次迭代中尝试打开
                             this.closeMaster();
                         }
-
+                        // 4. 再次向Master上报当前的offset，可视为对刚刚Master发来的数据的ACK
+                        // 当然，若有新数据可拉取，Master仍然会将其返回过来，这部分数据将在下次迭代中ACK
                         if (!reportSlaveMaxOffsetPlus()) {
                             continue;
                         }
-
+                        // 5. 连接有效性判断
                         long interval =
                             HAService.this.getDefaultMessageStore().getSystemClock().now()
                                 - this.lastWriteTimestamp;
@@ -577,6 +619,7 @@ public class HAService {
                             .getHaHousekeepingInterval()) {
                             log.warn("HAClient, housekeeping, found this connection[" + this.masterAddress
                                 + "] expired, " + interval);
+                            // 这里close掉的连接会在下一次迭代中尝试打开
                             this.closeMaster();
                             log.warn("HAClient, master not response some time, so close connection");
                         }
