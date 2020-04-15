@@ -78,6 +78,13 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 采用Round-Robin方式选择MessageQueue，
+     * 但尽可能避开lastBroker
+     *
+     * @param lastBrokerName 上次使用的Broker的Name
+     * @return MessageQueue
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
             return selectOneMessageQueue();
@@ -96,6 +103,11 @@ public class TopicPublishInfo {
         }
     }
 
+    /**
+     * 采用Round-Robin方式选择MessageQueue
+     *
+     * @return MessageQueue
+     */
     public MessageQueue selectOneMessageQueue() {
         int index = this.sendWhichQueue.getAndIncrement();
         int pos = Math.abs(index) % this.messageQueueList.size();

@@ -59,6 +59,7 @@ public class MQFaultStrategy {
         if (this.sendLatencyFaultEnable) {
             try {
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
+                // 1. 从index取余后的位置开始遍历MessageQueue列表，返回遇到的第一个延迟可接受的MessageQueue
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
                     int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
                     if (pos < 0)
@@ -69,7 +70,7 @@ public class MQFaultStrategy {
                             return mq;
                     }
                 }
-
+                // 2. 若所有的MessageQueue的延迟都不在最佳范围，则"矬子里拔大个"
                 final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
                 int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
                 if (writeQueueNums > 0) {
