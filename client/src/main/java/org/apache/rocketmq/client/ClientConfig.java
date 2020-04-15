@@ -62,6 +62,11 @@ public class ClientConfig {
 
     private LanguageCode language = LanguageCode.JAVA;
 
+    /**
+     * clientId格式: ${IP}@${Instance}<@UnitName>
+     *
+     * @return ClientId
+     */
     public String buildMQClientId() {
         StringBuilder sb = new StringBuilder();
         sb.append(this.getClientIP());
@@ -279,7 +284,9 @@ public class ClientConfig {
         }
 
         if (StringUtils.isNotEmpty(this.namesrvAddr)) {
+            // 这里的validate指的是正则匹配校验
             if (NameServerAddressUtils.validateInstanceEndpoint(namesrvAddr)) {
+                // 这里没有发网咯请求，而是取NameServer URL的一部分作为返回值(主机中第一个点号前的内容)
                 return NameServerAddressUtils.parseInstanceIdFromEndpoint(namesrvAddr);
             }
         }

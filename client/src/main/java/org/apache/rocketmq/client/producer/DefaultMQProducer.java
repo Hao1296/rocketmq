@@ -67,6 +67,8 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      *
      * For non-transactional messages, it does not matter as long as it's unique per process. </p>
      *
+     * 事务回查时，Broker会随机选择组内一个生产者发请求
+     *
      * See {@linktourl http://rocketmq.apache.org/docs/core-concept/} for more discussion.
      */
     private String producerGroup;
@@ -319,8 +321,11 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     @Override
     public SendResult send(
         Message msg) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        // 1. 校验消息
         Validators.checkMessage(msg, this);
+        // 2. 如有必要，在Topic前补充Namespace
         msg.setTopic(withNamespace(msg.getTopic()));
+        // 3. 交付defaultMQProducerImpl以执行发送逻辑
         return this.defaultMQProducerImpl.send(msg);
     }
 

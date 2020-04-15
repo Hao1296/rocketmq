@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.common.message;
 
+import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
@@ -26,9 +28,23 @@ public class Message implements Serializable {
     private static final long serialVersionUID = 8445773977080406428L;
 
     private String topic;
+    /**
+     * Flag仅供客户端使用，Broker端不解析。
+     *
+     * @see MessageSysFlag
+     */
     private int flag;
+    /**
+     * 扩展属性，其中包括keys和tags两个重要属性
+     */
     private Map<String, String> properties;
+    /**
+     * 消息体
+     */
     private byte[] body;
+    /**
+     * 事务ID
+     */
     private String transactionId;
 
     public Message() {

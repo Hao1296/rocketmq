@@ -98,6 +98,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     private final InternalLogger log = ClientLogger.getLog();
     private final Random random = new Random();
     private final DefaultMQProducer defaultMQProducer;
+    /**
+     * 生产者端Topic路由信息缓存
+     */
     private final ConcurrentMap<String/* topic */, TopicPublishInfo> topicPublishInfoTable =
         new ConcurrentHashMap<String, TopicPublishInfo>();
     private final ArrayList<SendMessageHook> sendMessageHookList = new ArrayList<SendMessageHook>();
@@ -179,15 +182,15 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         switch (this.serviceState) {
             case CREATE_JUST:
                 this.serviceState = ServiceState.START_FAILED;
-
+                // 1. 启动前check
                 this.checkConfig();
 
                 if (!this.defaultMQProducer.getProducerGroup().equals(MixAll.CLIENT_INNER_PRODUCER_GROUP)) {
                     this.defaultMQProducer.changeInstanceNameToPID();
                 }
-
+                // 2. 构建MQClientInstance
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
-
+                // 3. 注册defaultMQProducer
                 boolean registerOK = mQClientFactory.registerProducer(this.defaultMQProducer.getProducerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
@@ -197,7 +200,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 }
 
                 this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
-
+                // 4. 启动MQClientInstance
                 if (startFactory) {
                     mQClientFactory.start();
                 }
@@ -541,19 +544,32 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     }
 
+    /**
+     * 消息发送逻辑默认实现
+     *
+     * @param msg               消息对象
+     * @param communicationMode 同步/异步/OneWay
+     * @param sendCallback      异步发送时的callback
+     * @param timeout           超时时间
+     * @return 发送结果
+     */
     private SendResult sendDefaultImpl(
         Message msg,
         final CommunicationMode communicationMode,
         final SendCallback sendCallback,
         final long timeout
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        // 1. 发送前的检查
         this.makeSureStateOK();
+        //    这里的checkMessage和DefaultMQProducer.send方法中的重复了
         Validators.checkMessage(msg, this.defaultMQProducer);
         final long invokeID = random.nextLong();
         long beginTimestampFirst = System.currentTimeMillis();
         long beginTimestampPrev = beginTimestampFirst;
         long endTimestamp = beginTimestampFirst;
+        // 2. 获取Topic路由信息(若topicPublishInfoTable缓存中存在对应有效记录，则直接返回，否则查询NameServer)
         TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
+        // 3. 若路由信息有效，则开始执行send逻辑
         if (topicPublishInfo != null && topicPublishInfo.ok()) {
             boolean callTimeout = false;
             MessageQueue mq = null;
@@ -678,7 +694,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
             throw mqClientException;
         }
-
+        // 4. 若查不到路由信息，则检查配置&抛异常
         validateNameServerSetting();
 
         throw new MQClientException("No route info of this topic: " + msg.getTopic() + FAQUrl.suggestTodo(FAQUrl.NO_TOPIC_ROUTE_INFO),
@@ -689,6 +705,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
         if (null == topicPublishInfo || !topicPublishInfo.ok()) {
             this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
+            // 从NameServer处查询路由信息，并更新路由缓存(topicPublishInfoTable)
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
         }
