@@ -365,6 +365,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                                         final SendMessageContext sendMessageContext,
                                         final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
 
+        // 1. 初始化响应
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader)response.readCustomHeader();
 
@@ -374,7 +375,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));
 
         log.debug("receive SendMessage request command, {}", request);
-
+        // 2. 存储前检查(Broker状态+消息校验)
         final long startTimstamp = this.brokerController.getBrokerConfig().getStartAcceptSendRequestTimeStamp();
         if (this.brokerController.getMessageStore().now() < startTimstamp) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -387,7 +388,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         if (response.getCode() != -1) {
             return response;
         }
-
+        // 3. 解析请求，构建MessageExtBrokerInnerBroker端消息表示对象
         final byte[] body = request.getBody();
 
         int queueIdInt = requestHeader.getQueueId();
@@ -415,6 +416,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String clusterName = this.brokerController.getBrokerConfig().getBrokerClusterName();
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_CLUSTER, clusterName);
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
+        // 4. 根据事务标签来调用TransactionalMessageService或MessageStore来处理消息
         PutMessageResult putMessageResult = null;
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
@@ -431,7 +433,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         } else {
             putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
         }
-
+        // 5. 根据putMessageResult来构造RemotingCommand类型response
         return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext, ctx, queueIdInt);
 
     }

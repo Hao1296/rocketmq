@@ -31,6 +31,11 @@ public class MessageBatch extends Message implements Iterable<Message> {
         this.messages = messages;
     }
 
+    /**
+     * 序列化messages字段所包含的多条消息，以便放入RequestBody中
+     *
+     * @return 序列化结果
+     */
     public byte[] encode() {
         return MessageDecoder.encodeMessages(messages);
     }

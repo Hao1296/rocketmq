@@ -233,11 +233,11 @@ public class MQClientInstance {
                     if (null == this.clientConfig.getNamesrvAddr()) {
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
-                    // Start request-response channel
+                    // Start request-response channel (mQClientAPIImpl中封装了客户端和Broker间通信的方法)
                     this.mQClientAPIImpl.start();
-                    // Start various schedule tasks
+                    // Start various schedule tasks (包括和所有Broker间的定时心跳、定时同步NameServer中的元数据等等)
                     this.startScheduledTask();
-                    // Start pull service
+                    // Start pull service (对于生产者而言，这是个空线程)
                     this.pullMessageService.start();
                     // Start rebalance service
                     this.rebalanceService.start();

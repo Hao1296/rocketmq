@@ -111,6 +111,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     protected BlockingQueue<Runnable> checkRequestQueue;
     protected ExecutorService checkExecutor;
     private ServiceState serviceState = ServiceState.CREATE_JUST;
+    /**
+     * 与Broker&NameServer间的通信接口。
+     * 多数情况下，一个JVM进程中的多个生产者&消费者只对应一个MQClientInstance
+     */
     private MQClientInstance mQClientFactory;
     private ArrayList<CheckForbiddenHook> checkForbiddenHookList = new ArrayList<CheckForbiddenHook>();
     private int zipCompressLevel = Integer.parseInt(System.getProperty(MixAll.MESSAGE_COMPRESS_LEVEL, "5"));
@@ -219,9 +223,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             default:
                 break;
         }
-
+        // 5. 向所有Broker发心跳
         this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
-
+        // 6. 定时扫描超时Request，执行请求对应的requestCallback.onException(Throwable)
         this.timer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
@@ -602,7 +606,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         // 3.1.3 计算send动作耗费的时间，并更新该Broker对应的延迟信息
                         endTimestamp = System.currentTimeMillis();
                         this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, false);
-                        //
+                        // 3.1.4 若为同步通信，则判断失败时是否要尝试另一个Broker
                         switch (communicationMode) {
                             case ASYNC:
                                 return null;
@@ -730,8 +734,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         final TopicPublishInfo topicPublishInfo,
         final long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         long beginStartTime = System.currentTimeMillis();
+        // 1. 根据MessageQueue中的BrokerName来获取Broker地址(查缓存)
         String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         if (null == brokerAddr) {
+            // 缓存中没有相关记录的话，再次向NameServer查询路由信息
             tryToFindTopicPublishInfo(mq.getTopic());
             brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         }
@@ -739,7 +745,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         SendMessageContext context = null;
         if (brokerAddr != null) {
             brokerAddr = MixAll.brokerVIPChannel(this.defaultMQProducer.isSendMessageWithVIPChannel(), brokerAddr);
-
+            // 2. 设置UniqId，设置sysFlag(Broker端不解析flag，但会解析sysFlag，以判断压缩/事务消息相关信息)
             byte[] prevBody = msg.getBody();
             try {
                 //for MessageBatch,ID has been set in the generating process
@@ -764,7 +770,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 if (tranMsg != null && Boolean.parseBoolean(tranMsg)) {
                     sysFlag |= MessageSysFlag.TRANSACTION_PREPARED_TYPE;
                 }
-
+                // 3. 处理Hook
                 if (hasCheckForbiddenHook()) {
                     CheckForbiddenContext checkForbiddenContext = new CheckForbiddenContext();
                     checkForbiddenContext.setNameSrvAddr(this.defaultMQProducer.getNamesrvAddr());
@@ -797,7 +803,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     }
                     this.executeSendMessageHookBefore(context);
                 }
-
+                // 4. 构建请求头
                 SendMessageRequestHeader requestHeader = new SendMessageRequestHeader();
                 requestHeader.setProducerGroup(this.defaultMQProducer.getProducerGroup());
                 requestHeader.setTopic(msg.getTopic());
@@ -824,7 +830,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         MessageAccessor.clearProperty(msg, MessageConst.PROPERTY_MAX_RECONSUME_TIMES);
                     }
                 }
-
+                // 5. 根据不同通信方式采用不同发送方式
                 SendResult sendResult = null;
                 switch (communicationMode) {
                     case ASYNC:
