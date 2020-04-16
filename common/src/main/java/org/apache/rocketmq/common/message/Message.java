@@ -16,26 +16,28 @@
  */
 package org.apache.rocketmq.common.message;
 
-import org.apache.rocketmq.common.sysflag.MessageSysFlag;
-
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 执行send逻辑时，Message对象的body字段会作为RequestBody，其余字段会转化为RequestHeader
+ */
 public class Message implements Serializable {
     private static final long serialVersionUID = 8445773977080406428L;
 
     private String topic;
     /**
      * Flag仅供客户端使用，Broker端不解析。
-     *
-     * @see MessageSysFlag
+     * 对应地，RequestHeader中有sysFlag供Broker端使用，以判断压缩和事务状态
      */
     private int flag;
     /**
-     * 扩展属性，其中包括keys和tags两个重要属性
+     * 扩展属性，其中包括KEYS、TAGS、TRAN_MSG等重要属性
+     *
+     * @see MessageConst
      */
     private Map<String, String> properties;
     /**
