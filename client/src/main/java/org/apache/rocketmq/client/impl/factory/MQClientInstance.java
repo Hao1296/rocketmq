@@ -237,7 +237,7 @@ public class MQClientInstance {
                     this.mQClientAPIImpl.start();
                     // Start various schedule tasks (包括和所有Broker间的定时心跳、定时同步NameServer中的元数据等等)
                     this.startScheduledTask();
-                    // Start pull service (对于生产者而言，这是个空线程)
+                    // Start pull service (PUSH模式下拉消息的线程；对于生产者而言，该线程会被阻塞)
                     this.pullMessageService.start();
                     // Start rebalance service
                     this.rebalanceService.start();

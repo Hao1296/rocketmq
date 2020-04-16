@@ -27,6 +27,9 @@ import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.utils.ThreadUtils;
 
+/**
+ * PUSH模式下拉取消息的线程
+ */
 public class PullMessageService extends ServiceThread {
     private final InternalLogger log = ClientLogger.getLog();
     private final LinkedBlockingQueue<PullRequest> pullRequestQueue = new LinkedBlockingQueue<PullRequest>();
@@ -43,6 +46,12 @@ public class PullMessageService extends ServiceThread {
         this.mQClientFactory = mQClientFactory;
     }
 
+    /**
+     * 每timeDelay毫秒将给定PullRequest插入到pullRequestQueue
+     *
+     * @param pullRequest 提交的请求
+     * @param timeDelay   定时任务时间间隔
+     */
     public void executePullRequestLater(final PullRequest pullRequest, final long timeDelay) {
         if (!isStopped()) {
             this.scheduledExecutorService.schedule(new Runnable() {
@@ -56,6 +65,11 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * 将PullRequest提交到pullRequestQueue
+     *
+     * @param pullRequest 提交的请求
+     */
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         try {
             this.pullRequestQueue.put(pullRequest);
@@ -77,7 +91,9 @@ public class PullMessageService extends ServiceThread {
     }
 
     private void pullMessage(final PullRequest pullRequest) {
+        // 1. 根据ConsumerGroup选一个注册到MQClientInstance的消费者对象
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
+        // 2. 将PullRequest交由该消费者对象处理
         if (consumer != null) {
             DefaultMQPushConsumerImpl impl = (DefaultMQPushConsumerImpl) consumer;
             impl.pullMessage(pullRequest);
@@ -92,7 +108,10 @@ public class PullMessageService extends ServiceThread {
 
         while (!this.isStopped()) {
             try {
+                // 1. 从队列中捞取PullRequest
+                //    (注意，pullRequestQueue是LinkedBlockingQueue实例，take方法会一直阻塞直到有元素可消费)
                 PullRequest pullRequest = this.pullRequestQueue.take();
+                // 2. 发送PullRequest
                 this.pullMessage(pullRequest);
             } catch (InterruptedException ignored) {
             } catch (Exception e) {
