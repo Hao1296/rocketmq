@@ -66,9 +66,13 @@ public class PullMessageService extends ServiceThread {
     }
 
     /**
-     * 将PullRequest提交到pullRequestQueue
+     * 将PullRequest提交到pullRequestQueue。
+     * PullRequest表示特定ConsumerGroup对特定MessageQueue的拉取请求，
+     * 该请求被创建的终极源头是RebalanceImpl
      *
      * @param pullRequest 提交的请求
+     *
+     * @see RebalanceImpl
      */
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         try {

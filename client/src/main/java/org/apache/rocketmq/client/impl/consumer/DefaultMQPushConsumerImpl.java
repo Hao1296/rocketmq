@@ -219,7 +219,9 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     }
 
     /**
-     * 该方法会被MQClientInstance回调，以执行真正的PullRequest处理逻辑
+     * 该方法会被MQClientInstance回调，以执行真正的PullRequest处理逻辑。
+     * 然而该方法将真正逻辑委托给了PullAPIWrapper，
+     * 随后PullAPIWrapper又调用MQClientInstance的通信接口使得请求真正得到执行
      *
      * @param pullRequest PullRequest
      */
@@ -302,7 +304,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 return;
             }
         }
-        // 获取Topic订阅信息
+        // 获取Topic订阅信息，若没查到，则推迟一段时间再次拉取(默认3s)
         final SubscriptionData subscriptionData = this.rebalanceImpl.getSubscriptionInner().get(pullRequest.getMessageQueue().getTopic());
         if (null == subscriptionData) {
             this.executePullRequestLater(pullRequest, pullTimeDelayMillsWhenException);
@@ -322,6 +324,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                     switch (pullResult.getPullStatus()) {
                         case FOUND:
                             long prevRequestOffset = pullRequest.getNextOffset();
+                            // 根据PullResult更新PullRequest.nextOffset
                             pullRequest.setNextOffset(pullResult.getNextBeginOffset());
                             long pullRT = System.currentTimeMillis() - beginTimestamp;
                             DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullRT(pullRequest.getConsumerGroup(),
@@ -342,7 +345,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                     processQueue,
                                     pullRequest.getMessageQueue(),
                                     dispatchToConsume);
-
+                                // ConsumeRequest提交到ConsumeMessageService后，PullRequest会被提交回MQClientInstance
                                 if (DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval() > 0) {
                                     DefaultMQPushConsumerImpl.this.executePullRequestLater(pullRequest,
                                         DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval());
@@ -362,17 +365,19 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
                             break;
                         case NO_NEW_MSG:
+                            // 根据PullResult更新PullRequest.nextOffset
                             pullRequest.setNextOffset(pullResult.getNextBeginOffset());
 
                             DefaultMQPushConsumerImpl.this.correctTagsOffset(pullRequest);
-
+                            //将PullRequest提交回MQClientInstance
                             DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
                             break;
                         case NO_MATCHED_MSG:
+                            // 根据PullResult更新PullRequest.nextOffset
                             pullRequest.setNextOffset(pullResult.getNextBeginOffset());
 
                             DefaultMQPushConsumerImpl.this.correctTagsOffset(pullRequest);
-
+                            //将PullRequest提交回MQClientInstance
                             DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
                             break;
                         case OFFSET_ILLEGAL:

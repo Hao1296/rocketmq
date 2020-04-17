@@ -18,6 +18,12 @@ package org.apache.rocketmq.client.impl.consumer;
 
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * PullRequest表示特定ConsumerGroup对特定MessageQueue的拉取请求，
+ * 该请求被创建的终极源头是RebalanceImpl
+ *
+ * @see RebalanceImpl
+ */
 public class PullRequest {
     /**
      * 消费组
