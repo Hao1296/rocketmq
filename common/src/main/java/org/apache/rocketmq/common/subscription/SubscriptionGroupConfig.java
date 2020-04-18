@@ -19,6 +19,13 @@ package org.apache.rocketmq.common.subscription;
 
 import org.apache.rocketmq.common.MixAll;
 
+/**
+ * Broker端对ConsumerGroup行为表现相关配置。
+ * 配置信息默认存储路径为 ${ROCKET_HOME}/store/config/subscriptionGroup.json，
+ * 且默认配置下，一个新的ConsumerGroup出现时会自动在文件中添加其相关配置。
+ * 但如果BrokerConfig.autoCreateSubscriptionGroup为false，
+ * 则只能通过客户端显示手动更改配置。
+ */
 public class SubscriptionGroupConfig {
 
     private String groupName;
@@ -28,14 +35,23 @@ public class SubscriptionGroupConfig {
 
     private boolean consumeBroadcastEnable = true;
 
+    /**
+     * 重试队列数量
+     */
     private int retryQueueNums = 1;
-
+    /**
+     * 最大重试次数
+     */
     private int retryMaxTimes = 16;
 
     private long brokerId = MixAll.MASTER_ID;
-
+    /**
+     * 若消息拉取过程缓慢，则转向哪个Broker拉取
+     */
     private long whichBrokerWhenConsumeSlowly = 1;
-
+    /**
+     * 消费者列表发生变化时是否要立即进行Rebalance
+     */
     private boolean notifyConsumerIdsChangedEnable = true;
 
     public String getGroupName() {

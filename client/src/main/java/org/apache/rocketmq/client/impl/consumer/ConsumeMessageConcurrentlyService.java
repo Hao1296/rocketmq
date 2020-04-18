@@ -481,9 +481,9 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             ConsumeMessageConcurrentlyService.this.getConsumerStatsManager()
                 .incConsumeRT(ConsumeMessageConcurrentlyService.this.consumerGroup, messageQueue.getTopic(), consumeRT);
             /*
-                6. 处理消费结果
-                   ---------------------
-                   a. 若ProcessQueue已被drop，则不作处理 -> Rebalance过程可能造成重复消费
+               6. 处理消费结果
+                  ---------------------
+                  a. 若ProcessQueue已被drop，则不作处理 -> Rebalance过程可能造成重复消费
              */
             if (!processQueue.isDropped()) {
                 ConsumeMessageConcurrentlyService.this.processConsumeResult(status, context, this);
