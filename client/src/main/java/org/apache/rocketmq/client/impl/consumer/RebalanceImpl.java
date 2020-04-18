@@ -43,8 +43,18 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
+    /**
+     * 存储所订阅的Topic下所有MessageQueue。
+     *
+     * 注意，是给定Topic下所有MessageQueue，而非只包含本客户端拉消息时的目标MessageQueue
+     */
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
         new ConcurrentHashMap<String, Set<MessageQueue>>();
+    /**
+     * 对各Topic的订阅策略。
+     *
+     * 注意，SubscriptionData指的是订阅策略，而非MessageQueue的分配信息
+     */
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
         new ConcurrentHashMap<String, SubscriptionData>();
     protected String consumerGroup;
@@ -214,7 +224,9 @@ public abstract class RebalanceImpl {
     }
 
     public void doRebalance(final boolean isOrder) {
+        // 1. 获取在各Topic下的订阅策略
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
+        // 2. 以各Topic为参数，调用rebalanceByTopic
         if (subTable != null) {
             for (final Map.Entry<String, SubscriptionData> entry : subTable.entrySet()) {
                 final String topic = entry.getKey();
@@ -227,7 +239,7 @@ public abstract class RebalanceImpl {
                 }
             }
         }
-
+        // 3.  移除未订阅的Topic对应的MessageQueue及ProcessQueue
         this.truncateMessageQueueNotMyTopic();
     }
 
@@ -235,6 +247,11 @@ public abstract class RebalanceImpl {
         return subscriptionInner;
     }
 
+    /**
+     * 根据不同的消费策略，采取不同的rebalance方式
+     * @param topic Topic
+     * @param isOrder 是否顺序消费
+     */
     private void rebalanceByTopic(final String topic, final boolean isOrder) {
         switch (messageModel) {
             case BROADCASTING: {
@@ -255,6 +272,7 @@ public abstract class RebalanceImpl {
                 break;
             }
             case CLUSTERING: {
+                // 1. 获取全局状态 (该Topic下共有哪些MessageQueue、该ConsumerGroup内共有哪些Consumer)
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
                 if (null == mqSet) {
@@ -266,14 +284,24 @@ public abstract class RebalanceImpl {
                 if (null == cidAll) {
                     log.warn("doRebalance, {} {}, get consumer id list failed", consumerGroup, topic);
                 }
-
+                // 2. 开始Rebalance
                 if (mqSet != null && cidAll != null) {
+                    // 2.1 首先对MessageQueue和cid列表排序，
+                    //     以便让该ConsumerGroup内处于分布式环境下的多个Consumer看到的数据顺序一致
                     List<MessageQueue> mqAll = new ArrayList<MessageQueue>();
                     mqAll.addAll(mqSet);
 
                     Collections.sort(mqAll);
                     Collections.sort(cidAll);
-
+                    /* 2.2 确定队列分配算法，并计算分配结果
+                           ------------------------------
+                           RocketMQ提供了5种分配算法:
+                           AllocateMessageQueueAveragely -- 平均分配
+                           AllocateMessageQueueAveragelyByCircle -- 平均轮询分配
+                           AllocateMessageQueueConsistentHash -- 一致性Hash分配
+                           AllocateMessageQueueByConfig -- 根据配置固定分配
+                           AllocateMessageQueueByMachineRoom -- 根据Broker机房分配
+                     */
                     AllocateMessageQueueStrategy strategy = this.allocateMessageQueueStrategy;
 
                     List<MessageQueue> allocateResult = null;
@@ -288,7 +316,7 @@ public abstract class RebalanceImpl {
                             e);
                         return;
                     }
-
+                    // 2.3 根据分配结果进行处理
                     Set<MessageQueue> allocateResultSet = new HashSet<MessageQueue>();
                     if (allocateResult != null) {
                         allocateResultSet.addAll(allocateResult);
@@ -328,7 +356,10 @@ public abstract class RebalanceImpl {
     private boolean updateProcessQueueTableInRebalance(final String topic, final Set<MessageQueue> mqSet,
         final boolean isOrder) {
         boolean changed = false;
-
+        /* 1. 将不再拥有的MessageQueue对应的ProcessQueue设为dropped
+              ------------------------------------------------------
+              PullMessageService线程会判断PullRequest.processQueue.dropped的值；若为true，则直接退出，不作处理。
+         */
         Iterator<Entry<MessageQueue, ProcessQueue>> it = this.processQueueTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<MessageQueue, ProcessQueue> next = it.next();
@@ -362,7 +393,7 @@ public abstract class RebalanceImpl {
                 }
             }
         }
-
+        // 2. 整理一份全新的PullRequest列表
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         for (MessageQueue mq : mqSet) {
             if (!this.processQueueTable.containsKey(mq)) {
@@ -393,7 +424,8 @@ public abstract class RebalanceImpl {
                 }
             }
         }
-
+        // 3. 使PullRequest列表生效
+        //    a. PUSH模式下将PullRequest列表提交到MQClientInstance的PullMessageService线程
         this.dispatchPullRequest(pullRequestList);
 
         return changed;

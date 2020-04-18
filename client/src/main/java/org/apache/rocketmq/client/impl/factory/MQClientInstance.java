@@ -243,7 +243,7 @@ public class MQClientInstance {
                     this.startScheduledTask();
                     // Start pull service (PUSH模式下拉消息的线程；对于生产者而言，该线程会被阻塞)
                     this.pullMessageService.start();
-                    // Start rebalance service
+                    // Start rebalance service (默认每20s执行一次MQClientInstance.doRebalance())
                     this.rebalanceService.start();
                     // Start push service
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
