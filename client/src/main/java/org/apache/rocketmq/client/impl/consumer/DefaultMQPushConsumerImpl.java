@@ -114,6 +114,9 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
      * 消费offset存储服务。
      * 若为集群模式，消费进度存储在Broker端，offsetStore对应RemoteFileOffsetStore类；
      * 若为广播模式，消费进度存储在本地，offsetStore对应LocalFileOffsetStore
+     *
+     * @see LocalFileOffsetStore
+     * @see RemoteBrokerOffsetStore
      */
     private OffsetStore offsetStore;
     private ConsumeMessageService consumeMessageService;

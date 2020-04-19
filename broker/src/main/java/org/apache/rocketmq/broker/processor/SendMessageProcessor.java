@@ -209,7 +209,17 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
             msgExt.setDelayTimeLevel(delayLevel);
         }
-        // 8. 根据从CommitLog中查出来的消息构建一个新的消息对象，并存储到RetryTopic中
+        /*
+           8. 根据从CommitLog中查出来的消息构建一个新的消息对象，将Topic改为RetryTopic，然后存入CommitLog
+              --------------------------------------------------------------------------------------------
+              虽然这里设置Topic为RetryTopic，但由于设定了delayLevel，在存入CommitLog时会按延迟消息处理，
+              故实际存入CommitLog时消息的状态如下：
+              topic = SCHEDULE_TOPIC_XXXX
+              queueId = $delayLevel - 1
+              properties.REAL_TOPIC = %RETRY% + ConsumerGroupName
+              properties.REAL_QID = 被分配的RetryTopic下的ConsumeQueueId
+              properties.RETRY_TOPIC = 原Topic
+         */
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(newTopic);
         msgInner.setBody(msgExt.getBody());
