@@ -31,6 +31,9 @@ import org.apache.rocketmq.store.MessageFilter;
 import java.nio.ByteBuffer;
 import java.util.Map;
 
+/**
+ * 负责执行表达式过滤逻辑(不支持RetryTopic)，无状态
+ */
 public class ExpressionMessageFilter implements MessageFilter {
 
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.FILTER_LOGGER_NAME);
@@ -57,6 +60,12 @@ public class ExpressionMessageFilter implements MessageFilter {
         }
     }
 
+    /**
+     * 针对TagHashcode类型
+     * @param tagsCode tagsCode
+     * @param cqExtUnit extend unit of consume queue
+     * @return 是否匹配
+     */
     @Override
     public boolean isMatchedByConsumeQueue(Long tagsCode, ConsumeQueueExt.CqExtUnit cqExtUnit) {
         if (null == subscriptionData) {
@@ -114,6 +123,12 @@ public class ExpressionMessageFilter implements MessageFilter {
         return true;
     }
 
+    /**
+     * 针对SQL92类型
+     * @param msgBuffer message buffer in commit log, may be null if not invoked in store.
+     * @param properties message properties, should decode from buffer if null by yourself.
+     * @return 是否匹配
+     */
     @Override
     public boolean isMatchedByCommitLog(ByteBuffer msgBuffer, Map<String, String> properties) {
         if (subscriptionData == null) {
