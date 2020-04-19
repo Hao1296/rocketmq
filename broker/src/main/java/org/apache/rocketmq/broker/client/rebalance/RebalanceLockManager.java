@@ -32,6 +32,11 @@ public class RebalanceLockManager {
     private final static long REBALANCE_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
         "rocketmq.broker.rebalance.lockMaxLiveTime", "60000"));
     private final Lock lock = new ReentrantLock();
+    /**
+     * 存储了给定ConsumerGroup都曾给哪些MessageQueue加过锁，分别属于哪些消费者。
+     *
+     * 内存数据。
+     */
     private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, LockEntry>> mqLockTable =
         new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, LockEntry>>(1024);
 
@@ -118,7 +123,7 @@ public class RebalanceLockManager {
         final String clientId) {
         Set<MessageQueue> lockedMqs = new HashSet<MessageQueue>(mqs.size());
         Set<MessageQueue> notLockedMqs = new HashSet<MessageQueue>(mqs.size());
-
+        // 1. 判断当前clientId是否已经拥有了MessageQueue的锁，且未过期
         for (MessageQueue mq : mqs) {
             if (this.isLocked(group, mq, clientId)) {
                 lockedMqs.add(mq);
@@ -126,7 +131,7 @@ public class RebalanceLockManager {
                 notLockedMqs.add(mq);
             }
         }
-
+        // 2. 对于未拥有锁或虽拥有但失效的情况，尝试加锁或更新锁加锁时间戳
         if (!notLockedMqs.isEmpty()) {
             try {
                 this.lock.lockInterruptibly();
