@@ -192,8 +192,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;
             /*
               如果超出重试次数，则改为发送到 %DLQ% + ConsumerGroupName 这个Topic，即死信Topic (Dead Letter Queue)。
-              和重试队列不同，重试队列中的消息在一定时间延长后会被自动投递到原队列，消费者不用订阅重试Topic；
-              而死信队列不会再作进一步处理，如有需要，消费者需要显式订阅死信Topic。
+              和重试队列不同，消费者启动时会自动订阅其ConsumeGroup对应的重试队列，但不会自动订阅死信队列。
+              故，死信队列需要人工干预(或显示订阅)。
             */
             topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic,
                     DLQ_NUMS_PER_GROUP,
