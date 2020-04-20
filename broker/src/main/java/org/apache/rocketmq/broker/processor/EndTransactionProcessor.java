@@ -124,18 +124,31 @@ public class EndTransactionProcessor extends AsyncNettyRequestProcessor implemen
         }
         OperationResult result = new OperationResult();
         if (MessageSysFlag.TRANSACTION_COMMIT_TYPE == requestHeader.getCommitOrRollback()) {
+            // 注意，这里的"commitMessage"其实只是根据请求头中的offset将消息查出来，并没有任何写操作 |-_-|
             result = this.brokerController.getTransactionalMessageService().commitMessage(requestHeader);
             if (result.getResponseCode() == ResponseCode.SUCCESS) {
                 RemotingCommand res = checkPrepareMessage(result.getPrepareMessage(), requestHeader);
                 if (res.getCode() == ResponseCode.SUCCESS) {
+                    /*
+                       根据半消息构建新消息对象(恢复Topic和QueueId)
+                       -------------------------------------------
+                       这部分业务的方法命名.....|-_-|，
+                       endMessageTransaction仅仅是创建了个新对象，没有任何IO操作
+                     */
                     MessageExtBrokerInner msgInner = endMessageTransaction(result.getPrepareMessage());
                     msgInner.setSysFlag(MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), requestHeader.getCommitOrRollback()));
                     msgInner.setQueueOffset(requestHeader.getTranStateTableOffset());
                     msgInner.setPreparedTransactionOffset(requestHeader.getCommitLogOffset());
                     msgInner.setStoreTimestamp(result.getPrepareMessage().getStoreTimestamp());
                     MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_TRANSACTION_PREPARED);
+                    // 将恢复出来的消息作为普通消息put到CommitLog，并和普通消息一样dispatch
                     RemotingCommand sendResult = sendFinalMessage(msgInner);
+                    // 若写入成功，则"删除"半消息
                     if (sendResult.getCode() == ResponseCode.SUCCESS) {
+                        /*
+                          注意，这里所谓的"删除"是向RMQ_SYS_TRANS_OP_HALF_TOPIC这个Topic内追加表示删除操作的消息
+                          (半消息Topic为RMQ_SYS_TRANS_HALF_TOPIC，注意二者的不同)
+                         */
                         this.brokerController.getTransactionalMessageService().deletePrepareMessage(result.getPrepareMessage());
                     }
                     return sendResult;

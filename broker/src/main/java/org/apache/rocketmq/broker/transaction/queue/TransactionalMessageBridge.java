@@ -17,6 +17,7 @@
 package org.apache.rocketmq.broker.transaction.queue;
 
 import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.broker.transaction.TransactionalMessageCheckService;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.common.TopicConfig;
@@ -200,6 +201,16 @@ public class TransactionalMessageBridge {
         return store.asyncPutMessage(parseHalfMessageInner(messageInner));
     }
 
+    /**
+     * 用properties备份原本的Topic和QueueId，
+     * 将Topic设为TransactionListener，QueueId设为0，
+     * sysFlag重置为TRANSACTION_NOT_TYPE
+     *
+     * @param msgInner 生产者发来的半消息
+     * @return 修改后的消息对象
+     *
+     * @see TransactionalMessageCheckService
+     */
     private MessageExtBrokerInner parseHalfMessageInner(MessageExtBrokerInner msgInner) {
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC, msgInner.getTopic());
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID,

@@ -22,6 +22,12 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 服务线程，用于反查结果未知的事务状态。
+ * "结果未知"包括"生产者主动告知结果未知"和"Broker压根就没收到事务状态告知请求"两种情况。
+ *
+ * 该类实例由BrokerController维护
+ */
 public class TransactionalMessageCheckService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
@@ -48,7 +54,9 @@ public class TransactionalMessageCheckService extends ServiceThread {
 
     @Override
     protected void onWaitEnd() {
+        // 事务过期时间
         long timeout = brokerController.getBrokerConfig().getTransactionTimeOut();
+        // 事务最大回查次数
         int checkMax = brokerController.getBrokerConfig().getTransactionCheckMax();
         long begin = System.currentTimeMillis();
         log.info("Begin to check prepare message, begin time:{}", begin);

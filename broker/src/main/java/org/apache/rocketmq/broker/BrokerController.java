@@ -179,6 +179,10 @@ public class BrokerController {
     private BrokerFastFailure brokerFastFailure;
     private Configuration configuration;
     private FileWatchService fileWatchService;
+    /**
+     * 服务线程，用于反查结果未知的事务状态。
+     * "结果未知"包括"生产者主动告知结果未知"和"Broker压根就没收到事务状态告知请求"两种情况
+     */
     private TransactionalMessageCheckService transactionalMessageCheckService;
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
