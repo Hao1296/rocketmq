@@ -30,7 +30,8 @@ public class MQClientManager {
     private static MQClientManager instance = new MQClientManager();
     private AtomicInteger factoryIndexGenerator = new AtomicInteger();
     /**
-     * 维护了clientId和MQClientInstance间的对应关系
+     * 维护了clientId和MQClientInstance间的对应关系;
+     * clientId格式: ${IP}@${Instance}<@UnitName>
      */
     private ConcurrentMap<String/* clientId */, MQClientInstance> factoryTable =
         new ConcurrentHashMap<String, MQClientInstance>();
@@ -48,6 +49,7 @@ public class MQClientManager {
     }
 
     public MQClientInstance getOrCreateMQClientInstance(final ClientConfig clientConfig, RPCHook rpcHook) {
+        // clientId格式: ${IP}@${Instance}<@UnitName>
         String clientId = clientConfig.buildMQClientId();
         MQClientInstance instance = this.factoryTable.get(clientId);
         if (null == instance) {

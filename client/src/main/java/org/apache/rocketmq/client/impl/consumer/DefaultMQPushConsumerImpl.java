@@ -119,6 +119,16 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
      * @see RemoteBrokerOffsetStore
      */
     private OffsetStore offsetStore;
+    /**
+     * 维护消息消费线程池，
+     * 外部通过submitConsumeRequest来向其提交消费任务。
+     * 消费任务的提交者是PullMessageService，
+     * 其消息拉取线程，由MQClientInstance维护，
+     * 见{@link DefaultMQPushConsumerImpl#mQClientFactory}
+     *
+     * @see ConsumeMessageConcurrentlyService
+     * @see ConsumeMessageOrderlyService
+     */
     private ConsumeMessageService consumeMessageService;
     private long queueFlowControlTimes = 0;
     private long queueMaxSpanFlowControlTimes = 0;

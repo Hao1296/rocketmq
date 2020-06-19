@@ -47,6 +47,7 @@ import org.apache.rocketmq.client.impl.FindBrokerResult;
 import org.apache.rocketmq.client.impl.MQAdminImpl;
 import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.MQClientManager;
+import org.apache.rocketmq.client.impl.consumer.DefaultLitePullConsumerImpl;
 import org.apache.rocketmq.client.impl.consumer.DefaultMQPullConsumerImpl;
 import org.apache.rocketmq.client.impl.consumer.DefaultMQPushConsumerImpl;
 import org.apache.rocketmq.client.impl.consumer.MQConsumerInner;
@@ -85,6 +86,11 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 客户端对象，负责通用的客户端逻辑（如通过Topic查找Broker列表、向NameServer注册客户端等等）。
+ * 该类是所有客户端(生产者and消费者)的基础。
+ * 共用该对象的同类型客户端会被服务端视为"一个客户端"
+ */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
@@ -96,6 +102,9 @@ public class MQClientInstance {
     /**
      * 注册消费者对象，以实现消费分发。
      * 一个ConsumerGroup只能注册一个消费者对象
+     *
+     * @see DefaultMQPushConsumerImpl
+     * @see DefaultLitePullConsumerImpl
      */
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<String, MQAdminExtInner>();
