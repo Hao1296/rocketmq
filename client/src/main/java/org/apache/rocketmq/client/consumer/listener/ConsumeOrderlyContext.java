@@ -23,6 +23,11 @@ import org.apache.rocketmq.common.message.MessageQueue;
  */
 public class ConsumeOrderlyContext {
     private final MessageQueue messageQueue;
+    /**
+     * 是否自动更新offset。
+     * 当消息消费成功或达到了最大重试次数，offset会被自动更新到内存缓存
+     * (MQClientInstance会异步定时将内存缓存中的offset提交到Broker端)
+     */
     private boolean autoCommit = true;
     private long suspendCurrentQueueTimeMillis = -1;
 
