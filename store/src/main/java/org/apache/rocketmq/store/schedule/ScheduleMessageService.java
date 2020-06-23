@@ -57,7 +57,7 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
  * 2. Broker收到消息,发现delayLevel>0,于是:
  *    a. 将消息的Topic改为SCHEDULE_TOPIC_XXXX,目标Queue改为delayLevel对应QueueId;
  *    b. 将原Topic和QueueId分别被分到PROPERTY_REAL_TOPIC和PROPERTY_REAL_QUEUE_ID两个Property内;
- * 3. Broker为每个delayLevel分别创建一个定时任务,处理其所对应的ConsumeQueue内已到期的消息:
+ * 3. Broker为每个delayLevel分别创建一个定时任务(interval=100ms),处理其所对应的ConsumeQueue内已到期的消息:
  *    a. 还原Topic和QueueId,并清除delayLevel属性;
  *    b. put到CommitLog中;
  * 4. 随后该消息按正常流程被消费.
