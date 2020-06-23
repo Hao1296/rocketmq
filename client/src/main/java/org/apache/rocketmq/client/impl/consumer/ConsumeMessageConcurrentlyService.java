@@ -307,7 +307,11 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 List<MessageExt> msgBackFailed = new ArrayList<MessageExt>(consumeRequest.getMsgs().size());
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
-                    // 尝试对ackIndex外的消息执行sendMessageBack
+                    /* 尝试对ackIndex外的消息执行sendMessageBack
+                     * --------------------------------------------
+                     * sendMessageBack成功的消息会被Broker当作发往"Group重试Topic"的延迟消息
+                     * (原Topic会备份到RETRY_TOPIC属性内).
+                     */
                     boolean result = this.sendMessageBack(msg, context);
                     // 若sendMessageBack失败，则采取消费重试措施
                     if (!result) {
@@ -421,7 +425,13 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             MessageListenerConcurrently listener = ConsumeMessageConcurrentlyService.this.messageListener;
             ConsumeConcurrentlyContext context = new ConsumeConcurrentlyContext(messageQueue);
             ConsumeConcurrentlyStatus status = null;
-            // 2. 将重试RetryTopic中的消息恢复到原Topic
+            /* 2. 将重试RetryTopic中的消息恢复到原Topic.
+             * -------------------------------------------
+             * 原Topic会被设置到RETRY_TOPIC属性内,
+             * Broker端只是简单将重试消息当做重试Topic内的普通消息,
+             * 不会读取RETRY_TOPIC属性,更不会对其作特殊处理,
+             * 本质上该属性只对Consumer有意义.
+             */
             defaultMQPushConsumerImpl.resetRetryAndNamespace(msgs, defaultMQPushConsumer.getConsumerGroup());
             // 3. 执行消息消费Hook(Before)
             ConsumeMessageContext consumeMessageContext = null;
