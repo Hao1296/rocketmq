@@ -97,7 +97,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     private final InternalLogger log = ClientLogger.getLog();
     private final DefaultMQPushConsumer defaultMQPushConsumer;
     /**
-     * Rebalance逻辑封装
+     * Rebalance的具体实现,会被Rebalance线程所调用(MQClientInstance.rebalanceService)
      */
     private final RebalanceImpl rebalanceImpl = new RebalancePushImpl(this);
     private final ArrayList<FilterMessageHook> filterMessageHookList = new ArrayList<FilterMessageHook>();
@@ -913,6 +913,13 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         return this.rebalanceImpl.getSubscriptionInner();
     }
 
+    /**
+     * subscribe的过程分为两步:
+     * 1. 构造SubscriptionData,并注册到RebalanceImpl;
+     * 2. 触发向所有Broker发送心跳的过程
+     * @param topic topic
+     * @param subExpression 过滤表达式
+     */
     public void subscribe(String topic, String subExpression) throws MQClientException {
         try {
             SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(),

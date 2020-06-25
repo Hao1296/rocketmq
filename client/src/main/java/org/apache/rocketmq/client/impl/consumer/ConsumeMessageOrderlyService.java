@@ -52,7 +52,16 @@ import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 
 /**
- * 负责维护消息顺序消费业务
+ * 维护消息顺序消费线程池。
+ * <pre>
+ * “全局有序”和“并发”是一对矛盾量。“全局有序”的核心思想是“串行化”：
+ * 1. 生产者端要求采取必要的同步措施使消息的发送有序；
+ * 2. Broker端要求只有一个ConsumeQueue；
+ * 3. 消费者端要求“串行化”消费。
+ *
+ * 当前的ConsumeMessageOrderlyService则对应第3点：消费者串行化。
+ * </pre>
+ *
  */
 public class ConsumeMessageOrderlyService implements ConsumeMessageService {
     private static final InternalLogger log = ClientLogger.getLog();
@@ -286,13 +295,18 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                 case SUSPEND_CURRENT_QUEUE_A_MOMENT:
                     this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), msgs.size());
                     if (checkReconsumeTimes(msgs)) {
+                        // 将这批消息重新放入ProcessQueue
+                        // 因为当前处于“串行消费”场景，故即使消息有重复消费，那也是被限制在当前这批消息内
                         consumeRequest.getProcessQueue().makeMessageToCosumeAgain(msgs);
+                        // 消息消费失败后只在消费者端内部重试，不会执行sendMessageBack
+                        // 否则消息顺序性无法保证
                         this.submitConsumeRequestLater(
                             consumeRequest.getProcessQueue(),
                             consumeRequest.getMessageQueue(),
                             context.getSuspendCurrentQueueTimeMillis());
                         continueConsume = false;
                     } else {
+                        // 如果达到了最大重试次数，那么直接忽略这批消息，继续向后消费
                         commitOffset = consumeRequest.getProcessQueue().commit();
                     }
                     break;
@@ -401,6 +415,17 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
         }
     }
 
+    /**
+     * ConsumeMessageConcurrentlyService和ConsumeMessageOrderlyService
+     * 各自有一个同名内部类ConsumeRequest，实现上有差异。
+     *
+     * 可以看到该实现类比ConsumeMessageConcurrentlyService.ConsumeRequest少了
+     * 一个{@link List<MessageExt> msgs}属性。由此可以推断，顺序消费模式下，
+     * ConsumeRequest并不直接消费PullMessageService拉来的消息，
+     * 而是每次都去ProcessQueue中take，以达到串行消费的目的
+     *
+     * @see ConsumeMessageConcurrentlyService.ConsumeRequest
+     */
     class ConsumeRequest implements Runnable {
         private final ProcessQueue processQueue;
         private final MessageQueue messageQueue;
@@ -425,8 +450,9 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                 log.warn("run, the message queue not be able to consume, because it's dropped. {}", this.messageQueue);
                 return;
             }
-            // 2. 执行消费逻辑 (执行前会锁定MessageQueue对象)
+            // 2. 获取MessageQueue所对应的锁对象(只是消费者端内部的锁对象，而不是对Broker端MessageQueue加锁)
             final Object objLock = messageQueueLock.fetchLockObject(this.messageQueue);
+            // 3. 在获取锁的情况下处理消费逻辑(这保证了任意一个时刻，一个ProcessQueue只会被一个线程所消费)
             synchronized (objLock) {
                 if (MessageModel.BROADCASTING.equals(ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel())
                     || (this.processQueue.isLocked() && !this.processQueue.isLockExpired())) {
@@ -550,7 +576,10 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
 
                             ConsumeMessageOrderlyService.this.getConsumerStatsManager()
                                 .incConsumeRT(ConsumeMessageOrderlyService.this.consumerGroup, messageQueue.getTopic(), consumeRT);
-
+                            // 处理消费结果
+                            // a. 消费成功，直接commit进度
+                            // b. 消费失败，则在消费者端内部进行重试
+                            // c. 达到了最大重试次数，忽略这批消息
                             continueConsume = ConsumeMessageOrderlyService.this.processConsumeResult(msgs, status, context, this);
                         } else {
                             continueConsume = false;

@@ -87,9 +87,14 @@ import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 /**
- * 客户端对象，负责通用的客户端逻辑（如通过Topic查找Broker列表、向NameServer注册客户端等等）。
- * 该类是所有客户端(生产者and消费者)的基础。
- * 共用该对象的同类型客户端会被服务端视为"一个客户端"
+ * "通信层面客户端",负责客户端节点的通用行为(如向服务端注册节点,根据Topic查询Broker节点等等).
+ * 该类是"业务层客户端"的基础({@link DefaultMQProducerImpl},{@link DefaultMQPushConsumerImpl},
+ * {@link DefaultLitePullConsumerImpl}),其中每一个"业务层消费者"负责其中一个ConsumerGroup.
+ * 服务端只感知"通信层客户端",而不感知"业务层客户端".
+ *
+ * 在消息消费方面,MQClientInstance维护了3类重要线程:
+ * Rebalance线程、PullMessageService线程池和Offset上传线程
+ * (消息消费方面核心线程有4类，余下的ConsumeMessageService线程池由DefaultMQPushConsumerImpl来维护)
  */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
@@ -128,7 +133,16 @@ public class MQClientInstance {
         }
     });
     private final ClientRemotingProcessor clientRemotingProcessor;
+    /**
+     * 消息拉取线程,异步循环执行"消息拉取任务".
+     * 而初始"消息拉取任务"则由Rebalance过程产生
+     */
     private final PullMessageService pullMessageService;
+    /**
+     * Rebalance线程,异步循环触发Rebalance过程.
+     * 两次Rebalance过程间的间隔由rocketmq.client.rebalance.waitInterval配置项定义,
+     * 默认为20000(单位ms)
+     */
     private final RebalanceService rebalanceService;
     private final DefaultMQProducer defaultMQProducer;
     private final ConsumerStatsManager consumerStatsManager;
@@ -251,7 +265,10 @@ public class MQClientInstance {
                     }
                     // Start request-response channel (mQClientAPIImpl中封装了客户端和Broker间通信的方法)
                     this.mQClientAPIImpl.start();
-                    // Start various schedule tasks (包括和所有Broker间的定时心跳、定时同步NameServer中的元数据等等)
+                    // Start various schedule tasks
+                    // 包括向所有Broker定时发送心跳,
+                    // 定时同步NameServer中的元数据,
+                    // 定时将内存中的offset缓存同步至Broker等等
                     this.startScheduledTask();
                     // Start pull service (PUSH模式下拉消息的线程；对于生产者而言，该线程会被阻塞)
                     this.pullMessageService.start();
@@ -310,6 +327,8 @@ public class MQClientInstance {
             }
         }, 1000, this.clientConfig.getHeartbeatBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        // [定时任务] 上传offset至Broker(ConsumeMessageConcurrentlyService成功执行消费任务后会将新offset设置到内存)
+        // 默认5s
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -990,6 +1009,12 @@ public class MQClientInstance {
         this.rebalanceService.wakeup();
     }
 
+    /**
+     * 这里类似模板模式,定义了处理流程框架,
+     * 但每一步具体执行逻辑则交由各ConsumerGroup对应的"业务层消费者"来实现.
+     * 之所以这么设计,是因为不同类型的消费者的Rebalance逻辑是有差异的,
+     * 这样最好的办法是交由各ConsumerGroup对应的消费者自己来实现
+     */
     public void doRebalance() {
         for (Map.Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
             MQConsumerInner impl = entry.getValue();

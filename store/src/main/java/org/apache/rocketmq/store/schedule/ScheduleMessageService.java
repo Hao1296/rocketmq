@@ -43,10 +43,25 @@ import org.apache.rocketmq.store.MessageStore;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
+import org.apache.rocketmq.store.config.MessageStoreConfig;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
 /**
- * 负责维护延迟消息数据调度相关的定时任务
+ * 负责维护延迟消息数据调度相关的定时任务,
+ * 以消费各delayLevel对应的ConsumeQueue,
+ * 并定时持久化各ConsumeQueue的消费进度.
+ * <br/>
+ * 延时消息处理过程:
+ * <pre>
+ * 1. Producer向目标Topic发送消息,并设定所期望的delayLevel;
+ * 2. Broker收到消息,发现delayLevel>0,于是:
+ *    a. 将消息的Topic改为SCHEDULE_TOPIC_XXXX,目标Queue改为delayLevel对应QueueId;
+ *    b. 将原Topic和QueueId分别被分到PROPERTY_REAL_TOPIC和PROPERTY_REAL_QUEUE_ID两个Property内;
+ * 3. Broker为每个delayLevel分别创建一个定时任务(interval=100ms),处理其所对应的ConsumeQueue内已到期的消息:
+ *    a. 还原Topic和QueueId,并清除delayLevel属性;
+ *    b. put到CommitLog中;
+ * 4. 随后该消息按正常流程被消费.
+ * </pre>
  */
 public class ScheduleMessageService extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -62,7 +77,7 @@ public class ScheduleMessageService extends ConfigManager {
         new ConcurrentHashMap<Integer, Long>(32);
     /**
      * 存储各延时级别的消费进度。
-     * 每个延时级别对应SCHEDULE_TOPIC_XXXX topic下的一个ConsumeQueue
+     * 一个延时级别对应SCHEDULE_TOPIC_XXXX topic下的一个ConsumeQueue
      */
     private final ConcurrentMap<Integer /* level */, Long/* offset */> offsetTable =
         new ConcurrentHashMap<Integer, Long>(32);
@@ -119,6 +134,14 @@ public class ScheduleMessageService extends ConfigManager {
         return storeTimestamp + 1000;
     }
 
+    /**
+     * 启动两类定时任务:
+     * <pre>
+     * 1. 检查各delayLevel对应的ConsumeQueue内得消息是否到期(一个delayLevel对应一个ConsumeQueue);
+     * 2. 定时持久化各delayLevel对应的ConsumeQueue的消费进度
+     *    (Broker重启后使用{@link ScheduleMessageService#load()}来将数据恢复到内存);
+     * </pre>
+     */
     public void start() {
         if (started.compareAndSet(false, true)) {
             this.timer = new Timer("ScheduleMessageTimerThread", true);
@@ -170,18 +193,37 @@ public class ScheduleMessageService extends ConfigManager {
         return this.encode(false);
     }
 
+    /**
+     * 集成自ConfigManager,从配置文件中加载json格式配置。
+     * 配置文件路径由{@link ScheduleMessageService#configFilePath()}指定,
+     * 解析逻辑由{@link ScheduleMessageService#decode(String jsonString)}实现.
+     *
+     * 另外,加载配置文件的同时也会将{@link MessageStoreConfig#getMessageDelayLevel()}
+     * 解析到{@link ScheduleMessageService#delayLevelTable}
+     *
+     * @return 是否成功
+     */
     public boolean load() {
         boolean result = super.load();
         result = result && this.parseDelayLevel();
         return result;
     }
 
+    /**
+     * 指定延时消息配置文件路径
+     * @return 默认为${ROCKET_HOME}/store/config/delayOffset.json
+     */
     @Override
     public String configFilePath() {
         return StorePathConfigHelper.getDelayOffsetStorePath(this.defaultMessageStore.getMessageStoreConfig()
             .getStorePathRootDir());
     }
 
+    /**
+     * 可以看到从delayOffset.json配置文件加载的数据就是offsetTable,
+     * 即SCHEDULE_TOPIC_XXXX topic下各ConsumeQueue的消费进度
+     * @param jsonString 配置内容
+     */
     @Override
     public void decode(String jsonString) {
         if (jsonString != null) {
@@ -206,6 +248,7 @@ public class ScheduleMessageService extends ConfigManager {
         timeUnitTable.put("h", 1000L * 60 * 60);
         timeUnitTable.put("d", 1000L * 60 * 60 * 24);
 
+        // 类似于"1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"
         String levelString = this.defaultMessageStore.getMessageStoreConfig().getMessageDelayLevel();
         try {
             String[] levelArray = levelString.split(" ");
@@ -314,6 +357,7 @@ public class ScheduleMessageService extends ConfigManager {
                                2.2.1.2 若到期则开始处理；反之，创建下一个延迟任务并return
                                        -------------------------------------------------
                                        为什么直接return: 考虑到顺序IO，若当前消息未到期，后面的也肯定没到期
+                                       (给定SCHEDULE_TOPIC_XXXX下的一个ConsumeQueue,delayTime是固定的)
                              */
                             if (countdown <= 0) {
                                 // 从CommitLog中查找该条消息

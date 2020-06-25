@@ -396,7 +396,7 @@ public abstract class RebalanceImpl {
                 }
             }
         }
-        // 2. 整理一份全新的PullRequest列表
+        // 2. 为新分配至该消费者的队列创建PullRequest
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         for (MessageQueue mq : mqSet) {
             if (!this.processQueueTable.containsKey(mq)) {
@@ -427,7 +427,7 @@ public abstract class RebalanceImpl {
                 }
             }
         }
-        // 3. 使PullRequest列表生效
+        // 3. 使新队列的PullRequest生效
         //    a. PUSH模式下将PullRequest列表提交到MQClientInstance的PullMessageService线程
         this.dispatchPullRequest(pullRequestList);
 

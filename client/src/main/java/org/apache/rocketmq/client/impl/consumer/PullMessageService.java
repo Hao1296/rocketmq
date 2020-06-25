@@ -94,8 +94,12 @@ public class PullMessageService extends ServiceThread {
         return scheduledExecutorService;
     }
 
+    /**
+     * "拉消息"这个动作也由各ConsumerGroup自己实现
+     * @param pullRequest pullRequest
+     */
     private void pullMessage(final PullRequest pullRequest) {
-        // 1. 根据ConsumerGroup选一个注册到MQClientInstance的消费者对象
+        // 1. 根据ConsumerGroup查询注册到MQClientInstance的消费者对象
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         // 2. 将PullRequest交由该消费者对象处理
         if (consumer != null) {

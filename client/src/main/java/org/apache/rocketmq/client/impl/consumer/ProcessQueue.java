@@ -76,6 +76,11 @@ public class ProcessQueue {
      * 消费者上一次消费消息的时间
      */
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
+    /**
+     * 是否获取到了该ProcessQueue的锁。
+     *
+     * locked=true的前提是已经获取到Broker端ConsumeQueue的锁
+     */
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();
     private volatile boolean consuming = false;

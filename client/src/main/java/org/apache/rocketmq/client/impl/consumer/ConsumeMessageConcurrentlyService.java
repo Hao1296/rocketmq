@@ -52,6 +52,9 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     private static final InternalLogger log = ClientLogger.getLog();
     private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
     private final DefaultMQPushConsumer defaultMQPushConsumer;
+    /**
+     * 真正消费消息的业务逻辑
+     */
     private final MessageListenerConcurrently messageListener;
     private final BlockingQueue<Runnable> consumeRequestQueue;
     /**
@@ -304,7 +307,11 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 List<MessageExt> msgBackFailed = new ArrayList<MessageExt>(consumeRequest.getMsgs().size());
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
-                    // 尝试对ackIndex外的消息执行sendMessageBack
+                    /* 尝试对ackIndex外的消息执行sendMessageBack
+                     * --------------------------------------------
+                     * sendMessageBack成功的消息会被Broker当作发往"Group重试Topic"的延迟消息
+                     * (原Topic会备份到RETRY_TOPIC属性内).
+                     */
                     boolean result = this.sendMessageBack(msg, context);
                     // 若sendMessageBack失败，则采取消费重试措施
                     if (!result) {
@@ -382,6 +389,12 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         }, 5000, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * ConsumeMessageConcurrentlyService和ConsumeMessageOrderlyService
+     * 各自有一个同名内部类ConsumeRequest，实现上有差异
+     *
+     * @see ConsumeMessageOrderlyService.ConsumeRequest
+     */
     class ConsumeRequest implements Runnable {
         private final List<MessageExt> msgs;
         private final ProcessQueue processQueue;
@@ -412,7 +425,13 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             MessageListenerConcurrently listener = ConsumeMessageConcurrentlyService.this.messageListener;
             ConsumeConcurrentlyContext context = new ConsumeConcurrentlyContext(messageQueue);
             ConsumeConcurrentlyStatus status = null;
-            // 2. 恢复重试Topic
+            /* 2. 将重试RetryTopic中的消息恢复到原Topic.
+             * -------------------------------------------
+             * 原Topic会被设置到RETRY_TOPIC属性内,
+             * Broker端只是简单将重试消息当做重试Topic内的普通消息,
+             * 不会读取RETRY_TOPIC属性,更不会对其作特殊处理,
+             * 本质上该属性只对Consumer有意义.
+             */
             defaultMQPushConsumerImpl.resetRetryAndNamespace(msgs, defaultMQPushConsumer.getConsumerGroup());
             // 3. 执行消息消费Hook(Before)
             ConsumeMessageContext consumeMessageContext = null;
@@ -436,6 +455,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                         MessageAccessor.setConsumeStartTimeStamp(msg, String.valueOf(System.currentTimeMillis()));
                     }
                 }
+                // here
                 status = listener.consumeMessage(Collections.unmodifiableList(msgs), context);
             } catch (Throwable e) {
                 log.warn("consumeMessage exception: {} Group: {} Msgs: {} MQ: {}",
@@ -481,9 +501,14 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             ConsumeMessageConcurrentlyService.this.getConsumerStatsManager()
                 .incConsumeRT(ConsumeMessageConcurrentlyService.this.consumerGroup, messageQueue.getTopic(), consumeRT);
             /*
-               6. 处理消费结果
+               6. 处理消费结果:
+                  消费失败则sendMessageBack;
+                  成功则更新内存中的offset(MQClientInstance中有异步线程定时将offset上传至Broker).
                   ---------------------
-                  a. 若ProcessQueue已被drop，则不作处理 -> Rebalance过程可能造成重复消费
+                  备注:
+                  a. 这里的成功与否不是根据status来判断,而是根据context.ackIndex来判断,
+                     ConsumeRequest消息列表中序号大于ackIndex的消息均被认为失败;
+                  b. 若ProcessQueue已被drop，则不作处理 -> Rebalance过程可能造成重复消费;
              */
             if (!processQueue.isDropped()) {
                 ConsumeMessageConcurrentlyService.this.processConsumeResult(status, context, this);
