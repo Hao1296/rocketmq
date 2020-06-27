@@ -24,6 +24,9 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 /**
  * 服务线程，用于反查结果未知的事务状态。
+ * 默认每间隔60s执行一次，每次的逻辑是按序访问半消息Queue，
+ * 针对每条消息判断是"存在op消息" or "需要执行事务反查"。
+ *
  * "结果未知"包括"生产者主动告知结果未知"和"Broker压根就没收到事务状态告知请求"两种情况。
  *
  * 该类实例由BrokerController维护

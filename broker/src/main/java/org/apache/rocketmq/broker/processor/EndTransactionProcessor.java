@@ -156,6 +156,7 @@ public class EndTransactionProcessor extends AsyncNettyRequestProcessor implemen
                 return res;
             }
         } else if (MessageSysFlag.TRANSACTION_ROLLBACK_TYPE == requestHeader.getCommitOrRollback()) {
+            // Rollback场景下直接"删除"半消息，不必恢复到原Topic
             result = this.brokerController.getTransactionalMessageService().rollbackMessage(requestHeader);
             if (result.getResponseCode() == ResponseCode.SUCCESS) {
                 RemotingCommand res = checkPrepareMessage(result.getPrepareMessage(), requestHeader);
