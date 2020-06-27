@@ -83,8 +83,7 @@ public class TransactionMQProducer extends DefaultMQProducer {
     }
 
     /**
-     * 发送Prepare消息后, Broker会将其Topic和QueueId备份至Properties, 然后将消息的Topic变更为RMQ_SYS_TRANS_HALF_TOPIC,
-     * 将QueueId变更为0(该主题下只有一个ConsumeQueue).
+     * 发送Prepare消息后, Broker会将其Topic和QueueId备份至Properties, 然后将消息的Topic变更为RMQ_SYS_TRANS_HALF_TOPIC
      *
      * @param msg Transactional message to send.
      * @param arg Argument used along with local transaction executor.
