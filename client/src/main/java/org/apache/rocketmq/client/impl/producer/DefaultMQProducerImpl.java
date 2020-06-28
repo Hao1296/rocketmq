@@ -1244,7 +1244,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         /*
            2. 设置TRAN_MSG和PGROUP两个属性，并发送消息
               ------------------------------------------------
-              其中，ProducerGroup仅在事务反查时有效。Broker会挑选ProducerGroup内随机的一个生产者发起事务反查
+              其中，ProducerGroup仅在事务反查时有效。Broker会挑选ProducerGroup内随机的一个生产者发起事务反查。
+              另外tran_msg属性会被Broker用来判断当前消息是否为prepare消息
          */
         SendResult sendResult = null;
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TRANSACTION_PREPARED, "true");

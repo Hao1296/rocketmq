@@ -82,6 +82,13 @@ public class TransactionMQProducer extends DefaultMQProducer {
         return this.defaultMQProducerImpl.sendMessageInTransaction(msg, tranExecuter, arg);
     }
 
+    /**
+     * 发送Prepare消息后, Broker会将其Topic和QueueId备份至Properties, 然后将消息的Topic变更为RMQ_SYS_TRANS_HALF_TOPIC
+     *
+     * @param msg Transactional message to send.
+     * @param arg Argument used along with local transaction executor.
+     * @return 事务消息处理结果(成功状态, 事务ID, 消息唯一ID等等)
+     */
     @Override
     public TransactionSendResult sendMessageInTransaction(final Message msg,
         final Object arg) throws MQClientException {
