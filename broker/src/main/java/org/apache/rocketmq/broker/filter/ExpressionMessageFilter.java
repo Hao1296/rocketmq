@@ -61,7 +61,7 @@ public class ExpressionMessageFilter implements MessageFilter {
     }
 
     /**
-     * 针对TagHashcode类型
+     * 以ConsumeQueue为数据源进行过滤
      * @param tagsCode tagsCode
      * @param cqExtUnit extend unit of consume queue
      * @return 是否匹配
@@ -88,14 +88,14 @@ public class ExpressionMessageFilter implements MessageFilter {
             }
 
             return subscriptionData.getCodeSet().contains(tagsCode.intValue());
-        } else {
+        } else {// by SQL92(这里不会去解析SQL表达式)
             // no expression or no bloom
             if (consumerFilterData == null || consumerFilterData.getExpression() == null
                 || consumerFilterData.getCompiledExpression() == null || consumerFilterData.getBloomFilterData() == null) {
                 return true;
             }
 
-            // message is before consumer
+            // make sure that message is before consumer
             if (cqExtUnit == null || !consumerFilterData.isMsgInLive(cqExtUnit.getMsgStoreTime())) {
                 log.debug("Pull matched because not in live: {}, {}", consumerFilterData, cqExtUnit);
                 return true;
@@ -124,7 +124,7 @@ public class ExpressionMessageFilter implements MessageFilter {
     }
 
     /**
-     * 针对SQL92类型
+     * 以CommitLog为数据源进行过滤
      * @param msgBuffer message buffer in commit log, may be null if not invoked in store.
      * @param properties message properties, should decode from buffer if null by yourself.
      * @return 是否匹配
