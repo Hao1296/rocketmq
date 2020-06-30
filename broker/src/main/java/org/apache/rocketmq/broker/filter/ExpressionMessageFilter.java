@@ -32,7 +32,9 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 /**
- * 负责执行表达式过滤逻辑(不支持RetryTopic)，无状态
+ * 负责执行表达式过滤逻辑(不支持RetryTopic),无状态.
+ *
+ * 该过滤器仅在未使用ClassFilter时生效
  */
 public class ExpressionMessageFilter implements MessageFilter {
 
@@ -124,7 +126,9 @@ public class ExpressionMessageFilter implements MessageFilter {
     }
 
     /**
-     * 以CommitLog为数据源进行过滤
+     * 以CommitLog为数据源进行过滤.
+     * 这里只涉及SQL92过滤,
+     * TAG过滤仅在isMatchedByConsumeQueue内生效(因为其只需要读取TagHash,不需要读取CommitLog)
      * @param msgBuffer message buffer in commit log, may be null if not invoked in store.
      * @param properties message properties, should decode from buffer if null by yourself.
      * @return 是否匹配
