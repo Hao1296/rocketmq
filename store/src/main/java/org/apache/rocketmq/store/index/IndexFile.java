@@ -40,7 +40,7 @@ import org.apache.rocketmq.store.MappedFile;
  * 注意: IndexFile存储的是MessageKey的Hashcode到offset之间的映射，而非MessageKey本身。
  *      这意味着写入时不能覆盖已有的相同hashcode的IndexEntry，
  *      读取时要遍历"拉链"中的所有元素，筛选出所有携带目标hashcode的IndexEntry，
- *      并到CommitFile中读取具体MessageKey来进一步判断
+ *      并到CommitLog中读取具体MessageKey来进一步判断
  */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
