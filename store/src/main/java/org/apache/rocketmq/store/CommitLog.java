@@ -435,10 +435,12 @@ public class CommitLog {
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
             // Looking beginning to recover from which file
+            // 1. 找到第一个包含有效数据的CommitLog
             int index = mappedFiles.size() - 1;
             MappedFile mappedFile = null;
             for (; index >= 0; index--) {
                 mappedFile = mappedFiles.get(index);
+                // 当前CommitLog是否包含有效数据(文件中数据可能部分有效，部分损毁)
                 if (this.isMappedFileMatchedRecover(mappedFile)) {
                     log.info("recover from this mapped file " + mappedFile.getFileName());
                     break;
@@ -449,11 +451,12 @@ public class CommitLog {
                 index = 0;
                 mappedFile = mappedFiles.get(index);
             }
-
+            // 2. 将该文件内所有消息重新dispatch(后面不包含有效数据的文件直接丢掉)
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
             while (true) {
+                // 检查消息完整性，并生成DispatchRequest
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover);
                 int size = dispatchRequest.getMsgSize();
 
@@ -515,9 +518,15 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 判断给定文件是否存在可靠数据。
+     * 异常宕机恢复时需要在CommitLog目录中倒序查找第一个存在可靠数据的CommitLog
+     * @param mappedFile CommitLog
+     * @return 判断结果
+     */
     private boolean isMappedFileMatchedRecover(final MappedFile mappedFile) {
         ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
-
+        // 1. 判断第一条消息的魔数
         int magicCode = byteBuffer.getInt(MessageDecoder.MESSAGE_MAGIC_CODE_POSTION);
         if (magicCode != MESSAGE_MAGIC_CODE) {
             return false;
@@ -527,10 +536,11 @@ public class CommitLog {
         int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
         int msgStoreTimePos = 4 + 4 + 4 + 4 + 4 + 8 + 8 + 4 + 8 + bornhostLength;
         long storeTimestamp = byteBuffer.getLong(msgStoreTimePos);
+        // 2. 判断第一条消息的时间戳是否有效
         if (0 == storeTimestamp) {
             return false;
         }
-
+        // 3. 判断第一条消息的时间戳是否不大于checkpoint
         if (this.defaultMessageStore.getMessageStoreConfig().isMessageIndexEnable()
             && this.defaultMessageStore.getMessageStoreConfig().isMessageIndexSafe()) {
             if (storeTimestamp <= this.defaultMessageStore.getStoreCheckpoint().getMinTimestampIndex()) {
