@@ -145,6 +145,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
             log.debug("Check topic={}, queues={}", topic, msgQueues);
             // 2. 依次处理半消息Topic下所有的MessageQueue
             for (MessageQueue messageQueue : msgQueues) {
+                // 重要: 只有时间戳老于starTime的半消息才会在本批次中被处理(相当于做了个Snapshot)
                 long startTime = System.currentTimeMillis();
                 /*
                   2.1 获取半消息OP主题下和当前半消息队列对应的MessageQueue
@@ -165,8 +166,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                 HashMap<Long, Long> removeMap = new HashMap<>();
                 /* 2.2 判断从opOffset开始的op消息哪些是已被处理哪些是待处理
                  *     --------------------------------------------
-                 *     doneOpOffset保存已被处理的半消息offset；
-                 *     removeMap保存待处理的半消息offset及其所对应的op消息offset
+                 *     doneOpOffset保存早已被处理的半消息offset；
+                 *     removeMap保存当前批次可被处理的半消息offset及其所对应的op消息offset
                  */
                 PullResult pullResult = fillOpRemoveMap(removeMap, opQueue, opOffset, halfOffset, doneOpOffset);
                 if (null == pullResult) {
@@ -181,6 +182,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                 // single thread
                 int getMessageNullCount = 1;
                 long newOffset = halfOffset;
+                // i表示半消息ConsumeQueue的逻辑offset，即ConsumeQueue内的第几号消息
                 long i = halfOffset;
                 while (true) {
                     if (System.currentTimeMillis() - startTime > MAX_PROCESS_TIME_LIMIT) {
@@ -221,6 +223,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             i++;
                             continue;
                         }
+                        // 重要: 只有时间戳老于starTime的半消息才会在本批次中被处理(相当于做了个Snapshot)
                         if (msgExt.getStoreTimestamp() >= startTime) {
                             log.debug("Fresh stored. the miss offset={}, check it later, store={}", i,
                                 new Date(msgExt.getStoreTimestamp()));
@@ -250,8 +253,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         List<MessageExt> opMsg = pullResult.getMsgFoundList();
                         // 判断当前事务消息是否需要执行反查
                         boolean isNeedCheck = (opMsg == null && valueOfCurrentMinusBorn > checkImmunityTime)//当前事务消息已过"保护期"
-                                // 虽然拉取的op消息列表不为空，但最新一条op消息都老于当前半消息
-                                // (说明开头拉取的32条op消息不包含和当前半消息对应的那条，需要拉取更多op消息)
+                                // 拉取的op消息列表不为空，且最新一条op消息的时间戳超过了"最大事务过期时间"
+                                // (反之说明开头拉取的32条op消息在进度上可能未赶上当前半消息，需要拉取更多op消息)
                             || (opMsg != null && (opMsg.get(opMsg.size() - 1).getBornTimestamp() - startTime > transactionTimeout))
                                 // 消息已存储时间不合法
                             || (valueOfCurrentMinusBorn <= -1);
@@ -264,6 +267,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             // 执行事务反查
                             listener.resolveHalfMsg(msgExt);
                         } else {// 若未达到反查条件，则拉取更多的op消息来开启下一次迭代判断
+                            // 最大拉取老于tartTime + transactionTimeout时间点的所有op消息
                             pullResult = fillOpRemoveMap(removeMap, opQueue, pullResult.getNextBeginOffset(), halfOffset, doneOpOffset);
                             log.debug("The miss offset:{} in messageQueue:{} need to get more opMsg, result is:{}", i,
                                 messageQueue, pullResult);
@@ -342,11 +346,11 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                 opMessageExt.getTags(), opMessageExt.getQueueOffset(), queueOffset);
             // opQueue消息的tags中保存的是"操作类型"(目前只支持"删除",字面量为"d")
             if (TransactionalMessageUtil.REMOVETAG.equals(opMessageExt.getTags())) {
-                // 若该条op消息对应的半消息已被处理，则加入doneOpOffset
+                // 若该条op消息对应的半消息早已被处理，则加入doneOpOffset
                 if (queueOffset < miniOffset) {
                     doneOpOffset.add(opMessageExt.getQueueOffset());
                 } else {
-                    // 若该条op消息对应的半消息已被处理，则加入removeMap
+                    // 若该条op消息对应的半消息可在当前批次被处理，则加入removeMap
                     removeMap.put(queueOffset, opMessageExt.getQueueOffset());
                 }
             } else {
