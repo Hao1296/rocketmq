@@ -32,12 +32,24 @@ public class PullMessageRequestHeader implements CommandCustomHeader {
     private String topic;
     @CFNotNull
     private Integer queueId;
+    /**
+     * 本次拉取的起始点
+     */
     @CFNotNull
     private Long queueOffset;
     @CFNotNull
     private Integer maxMsgNums;
+    /**
+     * 请求携带的flag，指示了一些重要开关，如:
+     * 1. 是否顺便提价QueueOffset;
+     * 2. 是否携带了订阅策略;
+     * 等等
+     */
     @CFNotNull
     private Integer sysFlag;
+    /**
+     * 随本次拉取顺便提交的QueueOffset
+     */
     @CFNotNull
     private Long commitOffset;
     @CFNotNull

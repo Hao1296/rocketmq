@@ -113,7 +113,15 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     /**
      * 消费offset存储服务。
      * 若为集群模式，消费进度存储在Broker端，offsetStore对应RemoteFileOffsetStore类；
-     * 若为广播模式，消费进度存储在本地，offsetStore对应LocalFileOffsetStore
+     * 若为广播模式，消费进度存储在本地，offsetStore对应LocalFileOffsetStore.
+     *
+     * {@link MQClientInstance#start()}方法中会启动异步线程,
+     * 定时(默认5s)调用{@link OffsetStore#persist(org.apache.rocketmq.common.message.MessageQueue)}.
+     * 对于{@link LocalFileOffsetStore}, 意味着将消费进度以JSON格式持久化到文件;
+     * 对于{@link RemoteBrokerOffsetStore}, 意味着将消费进度上传至负责对应Queue的Broker.
+     *
+     * 对于Cluster消费模式(对应{@link RemoteBrokerOffsetStore}), 除定时上传offset外,
+     * 还会随每次PullRequest将OffsetStore中的进度顺便提交给Broker.
      *
      * @see LocalFileOffsetStore
      * @see RemoteBrokerOffsetStore
@@ -437,7 +445,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 DefaultMQPushConsumerImpl.this.executePullRequestLater(pullRequest, pullTimeDelayMillsWhenException);
             }
         };
-        // 计算要通过PullRequest顺便commit的offset
+        // 计算要通过PullRequest顺便commit的QueueOffset(只有Cluster模式才需要提交QueueOffset)
         boolean commitOffsetEnable = false;
         long commitOffsetValue = 0L;
         if (MessageModel.CLUSTERING == this.defaultMQPushConsumer.getMessageModel()) {

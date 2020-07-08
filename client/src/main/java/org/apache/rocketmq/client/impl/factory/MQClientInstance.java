@@ -135,7 +135,14 @@ public class MQClientInstance {
     private final ClientRemotingProcessor clientRemotingProcessor;
     /**
      * 消息拉取线程,异步循环执行"消息拉取任务".
-     * 而初始"消息拉取任务"则由Rebalance过程产生
+     * 而初始"消息拉取任务"则由Rebalance过程产生.
+     *
+     * 该线程每次迭代的主要3个步骤是:
+     * <pre>
+     * 1. 执行PullRequest拉取消息;
+     * 2. 创建并提交ConsumeRequest;
+     * 3. 修改PullRequest.queueOffset后重新提交到请求队列(队列由PullMessageService维护);
+     * </pre>
      */
     private final PullMessageService pullMessageService;
     /**
