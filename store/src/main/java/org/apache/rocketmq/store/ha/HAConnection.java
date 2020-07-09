@@ -303,7 +303,7 @@ public class HAConnection {
 
                     SelectMappedBufferResult selectResult =
                         HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
-                    if (selectResult != null) {
+                    if (selectResult != null) {// 存在新数据，向Salve传输新数据
                         int size = selectResult.getSize();
                         if (size > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize()) {
                             size = HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize();
@@ -323,7 +323,7 @@ public class HAConnection {
                         this.byteBufferHeader.flip();
 
                         this.lastWriteOver = this.transferData();
-                    } else {
+                    } else {// 不存在新数据，等待100ms(该过程可被CommitLog.handleHA()唤醒)
 
                         HAConnection.this.haService.getWaitNotifyObject().allWaitForRunning(100);
                     }

@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -49,7 +50,7 @@ public class HAService {
     private final List<HAConnection> connectionList = new LinkedList<>();
 
     /**
-     * 处理Master和Slave之间的业务：开端口，接收Slave拉数据的请求
+     * 处理Master和Slave之间的通信：开端口，接收Slave拉数据的请求
      */
     private final AcceptSocketService acceptSocketService;
 
@@ -282,9 +283,21 @@ public class HAService {
     class GroupTransferService extends ServiceThread {
 
         private final WaitNotifyObject notifyTransferObject = new WaitNotifyObject();
+        /**
+         * 用于主从同步请求提交过程，run方法每次迭代前会和requestsRead进行值互换
+         */
         private volatile List<CommitLog.GroupCommitRequest> requestsWrite = new ArrayList<>();
+        /**
+         * 用于主从同步进展判断过程，run方法每次迭代前会和requestsWrite进行值互换
+         */
         private volatile List<CommitLog.GroupCommitRequest> requestsRead = new ArrayList<>();
 
+        /**
+         * handleHA过程中，处理Producer请求的线程会构造{@link CommitLog.GroupCommitRequest}
+         * 通过该方法提交到请求队列中，然后阻塞在
+         * {@link CommitLog.GroupCommitRequest#future()#get(long, java.util.concurrent.TimeUnit)}
+         * @param request 主从复制请求
+         */
         public synchronized void putRequest(final CommitLog.GroupCommitRequest request) {
             synchronized (this.requestsWrite) {
                 this.requestsWrite.add(request);
@@ -358,8 +371,17 @@ public class HAService {
         }
     }
 
+    /**
+     * 主从复制线程，负责由主节点拉数据。
+     *
+     * 无论主从，都会有一个HAClient实例，并被start。
+     * 只是对于主节点而言，不存在masterAddress，该线程也沦为一个空线程
+     */
     class HAClient extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
+        /**
+         * Master地址
+         */
         private final AtomicReference<String> masterAddress = new AtomicReference<>();
         /**
          * Slave向Master发起拉数据请求时的偏移量
@@ -600,6 +622,7 @@ public class HAService {
 
             while (!this.isStopped()) {
                 try {
+                    // 当socketChannel为null时尝试连接Master
                     // 注意，当masterAddress为null时(Slave没有配置master地址)，不会抛异常，只是会让HAClient变成空线程
                     if (this.connectMaster()) {
 
