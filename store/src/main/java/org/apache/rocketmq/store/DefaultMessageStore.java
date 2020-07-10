@@ -715,10 +715,14 @@ public class DefaultMessageStore implements MessageStore {
                         }
 
                         nextBeginOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
-
+                        // maxOffsetPy是当前CommitLog中最大offset
+                        // maxPhyOffsetPulling是本次结果集中消息的最大offset(其实执行到这里已经完成了数据Get过程)
+                        // diff可视为CommitLog内待拉取消息大小的一个估计
                         long diff = maxOffsetPy - maxPhyOffsetPulling;
+                        // memory表示常驻内存大小，该大小之外的旧消息会被置换回磁盘
                         long memory = (long) (StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE
                             * (this.messageStoreConfig.getAccessMessageInMemoryMaxRatio() / 100.0));
+                        // "diff > memory"表示待拉取消息大小超过了物理内存的40%, 建议分流至slave
                         getResult.setSuggestPullingFromSlave(diff > memory);
                     } finally {
 

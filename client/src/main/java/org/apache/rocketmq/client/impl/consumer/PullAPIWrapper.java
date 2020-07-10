@@ -173,7 +173,7 @@ public class PullAPIWrapper {
         final PullCallback pullCallback
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         // 1. 根据BrokerName和BrokerId获取Broker地址(同一个主从结构内的节点BrokerName相同，BrokerId不同)
-        //    先查MQClientInstance的内存缓存
+        //    先查MQClientInstance的内存缓存(recalculatePullFromWhichNode计算本次目标BrokerId)
         FindBrokerResult findBrokerResult =
             this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),
                 this.recalculatePullFromWhichNode(mq), false);
@@ -236,7 +236,10 @@ public class PullAPIWrapper {
         if (this.isConnectBrokerByUser()) {
             return this.defaultBrokerId;
         }
-
+        /* pullFromWhichNodeTable的数据来自于PullRequest的Response.
+         * response.header.suggestWhichBrokerId指示了Broker端所建议的
+         * 下一次PullRequest的目标节点.
+         */
         AtomicLong suggest = this.pullFromWhichNodeTable.get(mq);
         if (suggest != null) {
             return suggest.get();
