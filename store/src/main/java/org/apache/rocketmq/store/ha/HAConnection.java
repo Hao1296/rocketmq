@@ -33,9 +33,12 @@ public class HAConnection {
     private final HAService haService;
     private final SocketChannel socketChannel;
     private final String clientAddr;
+    /**
+     * 异步线程.当复制起始点(第一个slaveRequestOffset)被确定后,不断地向slave推数据
+     */
     private WriteSocketService writeSocketService;
     /**
-     *
+     * 异步线程.处理slave上报的slaveRequestOffset和slaveAckOffset
      */
     private ReadSocketService readSocketService;
 
@@ -91,6 +94,10 @@ public class HAConnection {
      * Slave offset消息处理服务。
      * 收到Slave offset消息后，更新slaveRequestOffset和slaveAckOffset，
      * 并尝试更新HAService.push2SlaveMaxOffset，且唤醒等待中的GroupTransferService线程以判断是否可以向生产者发响应
+     *
+     * {@link ReadSocketService}和{@link WriteSocketService}之间的边界变量有两个:
+     * 1. {@link HAConnection#slaveRequestOffset};
+     * 2. {@link HAConnection#slaveAckOffset}.
      */
     class ReadSocketService extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024;
@@ -207,6 +214,10 @@ public class HAConnection {
     /**
      * 一旦接收来自Slave的第一个offset上报请求就开启循环，不断查询offset不小于nextTransferFromWhere的数据，
      * 并将其发送给Slave。其中nextTransferFromWhere在每次向Slave发送完新数据后会被更新(向前推进)
+     *
+     * {@link ReadSocketService}和{@link WriteSocketService}之间的边界变量有两个:
+     * 1. {@link HAConnection#slaveRequestOffset};
+     * 2. {@link HAConnection#slaveAckOffset}.
      */
     class WriteSocketService extends ServiceThread {
         private final Selector selector;
@@ -290,7 +301,7 @@ public class HAConnection {
                             this.byteBufferHeader.putLong(this.nextTransferFromWhere);
                             this.byteBufferHeader.putInt(0);
                             this.byteBufferHeader.flip();
-
+                            // 由于
                             this.lastWriteOver = this.transferData();
                             if (!this.lastWriteOver)
                                 continue;

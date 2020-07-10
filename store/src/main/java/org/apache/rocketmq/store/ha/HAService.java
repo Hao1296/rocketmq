@@ -42,6 +42,33 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.DefaultMessageStore;
 
+/**
+ * RocketMQ主从复制是"推拉混合"模式:
+ * <pre>
+ * 1. 从节点请求主节点开启连接(该连接有可配置的存活时间,默认20s,超过时限后会被从节点主动关闭,随后再开启新的连接);
+ * 2. 从节点在已建立的连接上发起请求,告知主节点推数据的起始位置;
+ * 3. 主节点从该位置不断推数据到从节点;
+ * 4. 从节点每处理完一批数据后就会向主节点上报复制进度(但该进度不会影响主节点推数据的起始位置);
+ * </pre>
+ *
+ * 该解决方案很优秀. 我们先考虑常规的PUSH or PULL模式的优缺点
+ * <pre>
+ * PUSH:
+ *   优点: 实时性极好
+ *   缺点: 提升了软件复杂度
+ *     a. master需要有重试机制;
+ *     b. master要有必要的流控;
+ * PULL:
+ *   优点: 机制简单,不需要失败重试,不需要流控;
+ *   缺点: 实时性差(两次PULL迭代之间的间隔越长,实时性越差);
+ * </pre>
+ * RocketMQ的解决方案就优秀在"既保持了实时性,又没有提升软件复杂度".
+ * <br/>
+ * <br/>
+ * 当slave过于落后时,目前RocketMQ没有自动处理机制 or 报警机制,
+ * 只是定时在日志中输出slave和master之间的gap
+ * (见{@link org.apache.rocketmq.broker.BrokerController#printMasterAndSlaveDiff()}).
+ */
 public class HAService {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -652,6 +679,7 @@ public class HAService {
                         long interval =
                                 HAService.this.getDefaultMessageStore().getSystemClock().now()
                                         - this.lastWriteTimestamp;
+                        // 默认20s
                         if (interval > HAService.this.getDefaultMessageStore().getMessageStoreConfig()
                                 .getHaHousekeepingInterval()) {
                             log.warn("HAClient, housekeeping, found this connection[" + this.masterAddress
