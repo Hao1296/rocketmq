@@ -154,6 +154,11 @@ public class BrokerController {
      * 重要定时线程池，承载的业务有：
      * 1. 定时持久化ConsumerGroup消费进度
      * 2. 定时持久化ConsumerGroup消息过滤策略
+     * 3. 从节点定时到主节点处同步消费相关元数据:
+     *    a. Topic配置(有多少个队列等等);
+     *    b. ConsumerGroup对各Queue的消费位置;
+     *    c. 延迟队列的处理进度;
+     *    d. ConsumerGroup消费相关配置(最大重试次数、重试Topic的Queue数量等等).
      * (未全部列举)
      */
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
@@ -1165,6 +1170,15 @@ public class BrokerController {
         return accessValidatorMap;
     }
 
+    /**
+     * 从节点开启定时任务，与主节点同步如下数据:
+     * this.syncTopicConfig();
+     * this.syncConsumerOffset();
+     * this.syncDelayOffset();
+     * this.syncSubscriptionGroupConfig();
+     *
+     * @param role Broker角色
+     */
     private void handleSlaveSynchronize(BrokerRole role) {
         if (role == BrokerRole.SLAVE) {
             if (null != slaveSyncFuture) {
